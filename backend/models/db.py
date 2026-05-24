@@ -112,6 +112,52 @@ class RetirementAccountUpdate(SQLModel):
     value: Optional[float] = None
 
 
+class WorkStockAccount(SQLModel, table=True):
+    """Manually-tracked ESPP, RSU, or other equity plan."""
+    id:         Optional[int] = Field(default=None, primary_key=True)
+    name:       str           = Field(default="")
+    plan_type:  str           = Field(default="Other")   # "ESPP" | "RSU" | "Other"
+    ticker:     Optional[str] = None
+    value:      float         = Field(default=0.0)
+    notes:      Optional[str] = None
+    updated_at: datetime      = Field(default_factory=datetime.utcnow)
+
+
+class WorkStockAccountCreate(SQLModel):
+    name:      str
+    plan_type: str           = "Other"
+    ticker:    Optional[str] = None
+    value:     float         = 0.0
+    notes:     Optional[str] = None
+
+
+class WorkStockAccountUpdate(SQLModel):
+    name:      Optional[str]   = None
+    plan_type: Optional[str]   = None
+    ticker:    Optional[str]   = None
+    value:     Optional[float] = None
+    notes:     Optional[str]   = None
+
+
+class ETradeCredential(SQLModel, table=True):
+    """
+    Singleton row (id=1) storing E*TRADE OAuth credentials.
+    consumer_key / consumer_secret come from the E*TRADE developer portal.
+    request_token / request_secret are temporary (during the OAuth handshake).
+    access_token / access_secret are persisted after a successful auth.
+    """
+    id:             int      = Field(default=1, primary_key=True)
+    consumer_key:   str      = Field(default="")
+    consumer_secret: str     = Field(default="")
+    # ephemeral — stored only between start-auth and complete-auth
+    request_token:  str      = Field(default="")
+    request_secret: str      = Field(default="")
+    # durable — stored after successful OAuth
+    access_token:   str      = Field(default="")
+    access_secret:  str      = Field(default="")
+    updated_at:     datetime = Field(default_factory=datetime.utcnow)
+
+
 class SettingsUpdate(SQLModel):
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None

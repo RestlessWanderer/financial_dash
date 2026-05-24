@@ -8,6 +8,7 @@ import AlertsPage from './pages/AlertsPage'
 import DividendPage from './pages/DividendPage'
 import MortgagePage from './pages/MortgagePage'
 import RetirementPage from './pages/RetirementPage'
+import WorkStockPage from './pages/WorkStockPage'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -19,6 +20,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="dividends" element={<DividendPage />} />
           <Route path="mortgage" element={<MortgagePage />} />
           <Route path="retirement" element={<RetirementPage />} />
+          <Route path="workstock" element={<WorkStockPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

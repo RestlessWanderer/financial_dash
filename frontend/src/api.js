@@ -33,6 +33,20 @@ export const api = {
   // Manual trigger
   runNow:      ()           => request('/alerts/run-now', { method: 'POST' }),
 
+  // Work Stock Plans — manual accounts
+  getWorkAccounts:    ()           => request('/workstock/accounts'),
+  createWorkAccount:  (body)       => request('/workstock/accounts', { method: 'POST', body: JSON.stringify(body) }),
+  updateWorkAccount:  (id, body)   => request(`/workstock/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteWorkAccount:  (id)         => request(`/workstock/accounts/${id}`, { method: 'DELETE' }),
+
+  // Work Stock Plans — E*TRADE integration
+  etradeStatus:       ()           => request('/workstock/etrade/status'),
+  etradeSaveCreds:    (body)       => request('/workstock/etrade/credentials', { method: 'POST', body: JSON.stringify(body) }),
+  etradeStartAuth:    ()           => request('/workstock/etrade/start-auth', { method: 'POST' }),
+  etradeCompleteAuth: (pin)        => request('/workstock/etrade/complete-auth', { method: 'POST', body: JSON.stringify({ pin }) }),
+  etradeDisconnect:   ()           => request('/workstock/etrade/disconnect', { method: 'DELETE' }),
+  etradePortfolio:    ()           => request('/workstock/etrade/portfolio'),
+
   // Retirement accounts
   getRetirementAccounts:    ()           => request('/retirement/'),
   createRetirementAccount:  (body)       => request('/retirement/', { method: 'POST', body: JSON.stringify(body) }),
