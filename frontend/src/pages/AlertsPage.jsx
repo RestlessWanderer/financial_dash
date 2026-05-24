@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api'
 import RuleBuilder from '../components/RuleBuilder'
-import { Plus, Trash2, Edit2, ToggleLeft, ToggleRight, PlayCircle, X, Check } from 'lucide-react'
+import { Plus, Trash2, Edit2, ToggleLeft, ToggleRight, PlayCircle, X, Check, AlertCircle } from 'lucide-react'
 
 // Preset templates for quick-start
 const PRESETS = [
@@ -205,18 +205,22 @@ function RuleCard({ rule, onDelete, onToggle, onEdit }) {
 }
 
 export default function AlertsPage() {
-  const [rules,  setRules]  = useState([])
+  const [rules,   setRules]   = useState([])
   const [tickers, setTickers] = useState([])
-  const [meta,   setMeta]   = useState({})
-  const [modal,  setModal]  = useState(false)
+  const [meta,    setMeta]    = useState({})
+  const [events,  setEvents]  = useState([])
+  const [modal,   setModal]   = useState(false)
   const [editing, setEditing] = useState(null)
   const [running, setRunning] = useState(false)
 
   const load = useCallback(async () => {
-    const [r, t, m] = await Promise.allSettled([api.getRules(), api.getTickers(), api.getIndicatorMeta()])
+    const [r, t, m, e] = await Promise.allSettled([
+      api.getRules(), api.getTickers(), api.getIndicatorMeta(), api.getEvents(100),
+    ])
     if (r.status === 'fulfilled') setRules(r.value)
     if (t.status === 'fulfilled') setTickers(t.value)
     if (m.status === 'fulfilled') setMeta(m.value)
+    if (e.status === 'fulfilled') setEvents(e.value)
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -250,7 +254,7 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Alert Rules</h1>
+        <h1 className="text-xl font-semibold">Stock Alerts</h1>
         <div className="flex items-center gap-2">
           <button onClick={runNow} disabled={running}
             className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-border text-muted hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-50">
@@ -269,7 +273,7 @@ export default function AlertsPage() {
 
       {tickers.length === 0 && (
         <div className="card badge-muted text-sm">
-          Add tickers on the Dashboard before creating alert rules.
+          Add tickers on the Stock Watchlist before creating alert rules.
         </div>
       )}
 
@@ -290,6 +294,57 @@ export default function AlertsPage() {
           ))}
         </div>
       )}
+
+      {/* ── Alert History ─────────────────────────────────────── */}
+      <div className="space-y-4">
+        <h2 className="text-base font-semibold text-slate-200">Alert History</h2>
+
+        {events.length === 0 ? (
+          <div className="card text-center py-12 text-muted">
+            <AlertCircle size={28} className="mx-auto mb-3 opacity-30" />
+            <p className="text-sm">No alerts have fired yet.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {events.map(e => {
+              const snap = e.indicator_snapshot || {}
+              return (
+                <div key={e.id} className="card flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="mono text-sm font-semibold text-accent">{e.ticker_symbol}</span>
+                        <span className="font-medium">{e.rule_name}</span>
+                      </div>
+                      <p className="text-xs text-muted mt-0.5">
+                        {new Date(e.triggered_at).toLocaleString()}
+                      </p>
+                    </div>
+                    {snap.price && (
+                      <span className="mono text-lg font-semibold">${snap.price?.toFixed(2)}</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 pt-2 border-t border-border">
+                    {[
+                      ['RSI',    snap.rsi?.toFixed(1)],
+                      ['MACD',   snap.macd?.toFixed(3)],
+                      ['Vol ×',  snap.volume_ratio && `${snap.volume_ratio}x`],
+                      ['SMA 50', snap.sma_50?.toFixed(2) && `$${snap.sma_50?.toFixed(2)}`],
+                      ['MMBM',   snap.mmbm_signal ? '✅' : '—'],
+                      ['MMSM',   snap.mmsm_signal ? '✅' : '—'],
+                    ].filter(([, v]) => v).map(([label, val]) => (
+                      <div key={label} className="flex flex-col">
+                        <span className="text-xs text-muted">{label}</span>
+                        <span className="mono text-sm">{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       {modal && (
         <RuleModal

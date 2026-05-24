@@ -161,7 +161,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Watchlist</h1>
+        <h1 className="text-xl font-semibold">Stock Watchlist</h1>
         <div className="flex items-center gap-2">
           <input
             value={symbol}
