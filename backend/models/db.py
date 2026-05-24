@@ -74,6 +74,13 @@ class AlertRuleUpdate(SQLModel):
     enabled: Optional[bool] = None
 
 
+class DividendHolding(SQLModel, table=True):
+    """Tracks how many shares of each dividend stock the user actually owns."""
+    symbol:       str      = Field(primary_key=True)
+    shares_owned: float    = Field(default=0.0)
+    updated_at:   datetime = Field(default_factory=datetime.utcnow)
+
+
 class DividendSnapshot(SQLModel, table=True):
     """One row per ticker — refreshed in bulk, queried sorted by yield."""
     symbol:           str            = Field(primary_key=True)

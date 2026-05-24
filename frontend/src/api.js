@@ -34,6 +34,11 @@ export const api = {
   runNow:      ()           => request('/alerts/run-now', { method: 'POST' }),
 
   // Dividend portfolio
-  getDividends:     () => request('/dividends/'),
-  refreshDividends: () => request('/dividends/refresh', { method: 'POST' }),
+  getDividends:          ()               => request('/dividends/'),
+  refreshDividends:      ()               => request('/dividends/refresh', { method: 'POST' }),
+  getDividendHoldings:   ()               => request('/dividends/holdings'),
+  updateDividendHolding: (symbol, shares) => request(`/dividends/holdings/${symbol}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ shares_owned: shares }),
+  }),
 }

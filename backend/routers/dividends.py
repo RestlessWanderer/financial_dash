@@ -1,10 +1,14 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends
-from sqlmodel import Session, select
+from sqlmodel import Session, select, SQLModel
 
-from models.db import DividendSnapshot
+from models.db import DividendSnapshot, DividendHolding
 from services.dividends import fetch_all_dividends
 from database import get_session
+
+
+class HoldingUpdate(SQLModel):
+    shares_owned: float = 0.0
 
 router = APIRouter(prefix="/dividends", tags=["dividends"])
 
@@ -65,3 +69,25 @@ def refresh_dividends(session: Session = Depends(get_session)):
         "last_updated": now.isoformat(),
         "count":        len(top),
     }
+
+
+@router.get("/holdings")
+def get_holdings(session: Session = Depends(get_session)):
+    """Return a dict of symbol → shares_owned for all tracked holdings."""
+    rows = session.exec(select(DividendHolding)).all()
+    return {r.symbol: r.shares_owned for r in rows}
+
+
+@router.patch("/holdings/{symbol}")
+def update_holding(symbol: str, body: HoldingUpdate, session: Session = Depends(get_session)):
+    """Create or update shares owned for a single symbol."""
+    sym = symbol.upper()
+    row = session.get(DividendHolding, sym)
+    if row:
+        row.shares_owned = body.shares_owned
+        row.updated_at   = datetime.utcnow()
+    else:
+        row = DividendHolding(symbol=sym, shares_owned=body.shares_owned)
+    session.add(row)
+    session.commit()
+    return {"symbol": sym, "shares_owned": row.shares_owned}
