@@ -261,8 +261,8 @@ export default function AssetsPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Assets</h1>
-          <p className="text-xs text-muted mt-0.5">Track owned assets and any debt against them</p>
+          <h1 className="text-xl font-semibold">Physical Assets</h1>
+          <p className="text-xs text-muted mt-0.5">Track owned physical assets and any debt against them</p>
         </div>
 
         {/* Totals summary */}

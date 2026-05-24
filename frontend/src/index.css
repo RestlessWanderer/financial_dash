@@ -11,12 +11,7 @@
   --color-muted:   100 116 139;   /* #64748b */
 
   /* Semantic text tokens */
-  --text-base:    226 232 240;    /* slate-200 */
-  --text-sub:     148 163 184;    /* slate-400 */
-  --text-dim:     100 116 139;    /* slate-500 */
-
-  /* Subtle backgrounds used for hover / active states */
-  --subtle-bg:    255 255 255;    /* white — used as bg-white/5 etc. */
+  --text-base:  226 232 240;      /* slate-200 */
 }
 
 /* ── Light theme overrides ───────────────────────────────────────── */
@@ -28,10 +23,6 @@
   --color-muted:   100 116 139;   /* slate-500 */
 
   --text-base:     15 23 42;      /* slate-900 */
-  --text-sub:      51 65 85;      /* slate-700 */
-  --text-dim:      100 116 139;   /* slate-500 */
-
-  --subtle-bg:     0 0 0;         /* black — used as bg-black/5 etc. */
 }
 
 /* ── Base styles ─────────────────────────────────────────────────── */
@@ -67,25 +58,44 @@ body {
 }
 .animate-slide-in { animation: slide-in 0.2s ease-out both; }
 
-/* ── Light-mode overrides for commonly-used Tailwind utilities ───── *
- * These cover structural text/background classes used app-wide       *
- * without needing a dark: prefix on every element.                   */
+/* ═══════════════════════════════════════════════════════════════════
+   LIGHT MODE OVERRIDES
+   Two-class selectors (.light .foo) beat Tailwind's single-class
+   selectors (.foo) without needing !important.
+   ═══════════════════════════════════════════════════════════════════ */
 
-/* Primary / secondary text */
+/* ── Structural background & border utilities ────────────────────── *
+ * Tailwind compiles bg-panel/bg-surface/border-border from a         *
+ * cached build that may have hardcoded hex values. These overrides   *
+ * force them to use the current CSS variable values at runtime.      */
+.light .bg-surface    { background-color: rgb(var(--color-surface)); }
+.light .bg-panel      { background-color: rgb(var(--color-panel));   }
+.light .border-border { border-color:     rgb(var(--color-border));  }
+.light .text-muted    { color:            rgb(var(--color-muted));   }
+
+/* ── Primary / secondary text ────────────────────────────────────── */
 .light .text-slate-100,
-.light .text-slate-200 { color: rgb(15 23 42); }        /* → slate-900 */
-.light .text-slate-300 { color: rgb(51 65 85); }        /* → slate-700 */
-.light .text-slate-400 { color: rgb(71 85 105); }       /* → slate-600 */
+.light .text-slate-200 { color: rgb(15 23 42); }   /* → slate-900 */
+.light .text-slate-300 { color: rgb(51 65 85); }   /* → slate-700 */
+.light .text-slate-400 { color: rgb(71 85 105); }  /* → slate-600 */
 
-/* Hover text */
 .light .hover\:text-slate-200:hover { color: rgb(15 23 42); }
 
-/* Subtle hover / active backgrounds */
+/* ── Subtle hover / active backgrounds ───────────────────────────── */
 .light .bg-white\/5,
 .light .bg-white\/\[0\.025\],
-.light .bg-white\/\[0\.01\]  { background-color: rgba(0,0,0,0.04); }
-.light .hover\:bg-white\/5:hover,
-.light .hover\:bg-white\/\[0\.025\]:hover { background-color: rgba(0,0,0,0.04); }
+.light .bg-white\/\[0\.02\],
+.light .bg-white\/\[0\.015\],
+.light .bg-white\/\[0\.01\]   { background-color: rgba(0,0,0,0.04); }
 
-/* Subtle borders */
-.light .border-white\/5 { border-color: rgba(0,0,0,0.08); }
+.light .hover\:bg-white\/5:hover,
+.light .hover\:bg-white\/\[0\.025\]:hover,
+.light .hover\:bg-white\/\[0\.03\]:hover { background-color: rgba(0,0,0,0.04); }
+
+/* ── Subtle borders ──────────────────────────────────────────────── */
+.light .border-white\/5  { border-color: rgba(0,0,0,0.08); }
+.light .border-border\/60,
+.light .border-border\/50,
+.light .border-border\/40,
+.light .border-border\/30,
+.light .border-border\/20 { border-color: rgba(var(--color-border) / 0.6); }

@@ -95,6 +95,27 @@ class DividendSnapshot(SQLModel, table=True):
     fetched_at:       datetime       = Field(default_factory=datetime.utcnow)
 
 
+class LiquidAccount(SQLModel, table=True):
+    """A manually-tracked liquid account (checking, savings, HYSA, etc.)."""
+    id:           Optional[int] = Field(default=None, primary_key=True)
+    name:         str           = Field(default="")
+    account_type: str           = Field(default="Checking")  # Checking | Savings | HYSA | Money Market | CD | Other
+    value:        float         = Field(default=0.0)
+    updated_at:   datetime      = Field(default_factory=datetime.utcnow)
+
+
+class LiquidAccountCreate(SQLModel):
+    name:         str
+    account_type: str   = "Checking"
+    value:        float = 0.0
+
+
+class LiquidAccountUpdate(SQLModel):
+    name:         Optional[str]   = None
+    account_type: Optional[str]   = None
+    value:        Optional[float] = None
+
+
 class RetirementAccount(SQLModel, table=True):
     """A manually-tracked retirement account (401k, IRA, Roth, etc.)."""
     id:         Optional[int] = Field(default=None, primary_key=True)

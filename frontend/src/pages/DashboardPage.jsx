@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import {
-  PiggyBank, Briefcase, Layers, Home, Landmark,
+  PiggyBank, Briefcase, Layers, Home, Landmark, Wallet,
   TrendingUp, TrendingDown, ArrowRight,
 } from 'lucide-react'
 
@@ -131,6 +131,7 @@ export default function DashboardPage() {
   const [retirement, setRetirement] = useState(null)
   const [workStock,  setWorkStock]  = useState(null)
   const [assets,     setAssets]     = useState(null)
+  const [liquid,     setLiquid]     = useState(null)
   const [divData,    setDivData]    = useState(null)
   const [divHoldings,setDivHoldings]= useState(null)
   const [loading,    setLoading]    = useState(true)
@@ -153,14 +154,16 @@ export default function DashboardPage() {
       api.getRetirementAccounts(),
       api.getWorkAccounts(),
       api.getAssets(),
+      api.getLiquidAccounts(),
       api.getDividends(),
       api.getDividendHoldings(),
-    ]).then(([retRes, wsRes, assetRes, divRes, holdRes]) => {
-      if (retRes.status   === 'fulfilled') setRetirement(retRes.value)
-      if (wsRes.status    === 'fulfilled') setWorkStock(wsRes.value)
-      if (assetRes.status === 'fulfilled') setAssets(assetRes.value)
-      if (divRes.status   === 'fulfilled') setDivData(divRes.value)
-      if (holdRes.status  === 'fulfilled') setDivHoldings(holdRes.value)
+    ]).then(([retRes, wsRes, assetRes, liquidRes, divRes, holdRes]) => {
+      if (retRes.status    === 'fulfilled') setRetirement(retRes.value)
+      if (wsRes.status     === 'fulfilled') setWorkStock(wsRes.value)
+      if (assetRes.status  === 'fulfilled') setAssets(assetRes.value)
+      if (liquidRes.status === 'fulfilled') setLiquid(liquidRes.value)
+      if (divRes.status    === 'fulfilled') setDivData(divRes.value)
+      if (holdRes.status   === 'fulfilled') setDivHoldings(holdRes.value)
       setLoading(false)
     })
   }, [])
@@ -171,6 +174,7 @@ export default function DashboardPage() {
   const assetValue      = (assets     ?? []).reduce((s, a) => s + (a.value ?? 0), 0)
   const assetDebt       = (assets     ?? []).reduce((s, a) => s + (a.debt  ?? 0), 0)
   const assetEquity     = assetValue - assetDebt
+  const liquidTotal     = (liquid     ?? []).reduce((s, a) => s + (a.value ?? 0), 0)
 
   const mortgageBalance = calcMortgageBalance(mortgageConfig, mortgageExtras)
   const hasMortgage     = mortgageBalance !== null
@@ -180,7 +184,7 @@ export default function DashboardPage() {
     : null
 
   // Net worth = all assets minus all liabilities
-  const netAssets      = retirementTotal + workStockTotal + assetValue
+  const netAssets      = retirementTotal + workStockTotal + assetValue + liquidTotal
   const netLiabilities = assetDebt + (hasMortgage ? mortgageBalance : 0)
   const netWorth       = netAssets - netLiabilities
   const nwReady        = !loading
@@ -238,8 +242,9 @@ export default function DashboardPage() {
 
             <NWRow label="Retirement Accounts" value={loading ? null : retirementTotal} sign="+" />
             <NWRow label="Work Stock Plans"    value={loading ? null : workStockTotal}  sign="+" />
-            <NWRow label="Asset Values"        value={loading ? null : assetValue}      sign="+" />
-            <NWRow label="Asset Debts"         value={loading ? null : assetDebt}       sign="−" />
+            <NWRow label="Liquid Assets"       value={loading ? null : liquidTotal}     sign="+" />
+            <NWRow label="Physical Asset Values" value={loading ? null : assetValue}   sign="+" />
+            <NWRow label="Physical Asset Debts"  value={loading ? null : assetDebt}    sign="−" />
             {hasMortgage && (
               <NWRow label="Mortgage Balance"  value={loading ? null : mortgageBalance} sign="−" />
             )}
@@ -279,18 +284,32 @@ export default function DashboardPage() {
           ]}
         />
 
-        {/* Assets */}
+        {/* Physical Assets */}
         <SectionCard
           to="/assets"
           icon={Layers}
           iconClass="bg-orange-500/10 text-orange-400"
-          title="Assets"
+          title="Physical Assets"
           primary={loading ? null : usd(assetEquity)}
           primaryLabel="net equity (value − debt)"
           loading={loading}
           rows={loading ? [] : [
             ['Total value', usd(assetValue), 'text-slate-300'],
             ['Total debt',  usd(assetDebt),  'text-red-400/80'],
+          ]}
+        />
+
+        {/* Liquid Assets */}
+        <SectionCard
+          to="/liquid"
+          icon={Wallet}
+          iconClass="bg-cyan-500/10 text-cyan-400"
+          title="Liquid Assets"
+          primary={loading ? null : usd(liquidTotal)}
+          primaryLabel={`${(liquid ?? []).length} account${(liquid ?? []).length !== 1 ? 's' : ''}`}
+          loading={loading}
+          rows={loading ? [] : [
+            ['Contribution to net worth', signed(liquidTotal), 'text-green-400/80'],
           ]}
         />
 

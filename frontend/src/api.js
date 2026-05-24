@@ -53,6 +53,12 @@ export const api = {
   etradeDisconnect:   ()           => request('/workstock/etrade/disconnect', { method: 'DELETE' }),
   etradePortfolio:    ()           => request('/workstock/etrade/portfolio'),
 
+  // Liquid accounts (checking, savings, HYSA, etc.)
+  getLiquidAccounts:    ()           => request('/liquid/'),
+  createLiquidAccount:  (body)       => request('/liquid/', { method: 'POST', body: JSON.stringify(body) }),
+  updateLiquidAccount:  (id, body)   => request(`/liquid/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteLiquidAccount:  (id)         => request(`/liquid/${id}`, { method: 'DELETE' }),
+
   // Retirement accounts
   getRetirementAccounts:    ()           => request('/retirement/'),
   createRetirementAccount:  (body)       => request('/retirement/', { method: 'POST', body: JSON.stringify(body) }),

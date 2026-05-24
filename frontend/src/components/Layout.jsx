@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
-import { BarChart2, Bell, Landmark, Home, Stethoscope, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon } from 'lucide-react'
+import { BarChart2, Bell, Landmark, Home, Stethoscope, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon, Wallet } from 'lucide-react'
 import { useAlertNotifications } from '../hooks/useAlertNotifications'
 import ToastContainer from './ToastContainer'
 
 export default function Layout() {
   const { toasts, dismiss } = useAlertNotifications()
 
-  const [light, setLight] = useState(() => localStorage.getItem('theme') === 'light')
+  const [light, setLight] = useState(() => {
+    const saved = localStorage.getItem('theme') === 'light'
+    // Apply class immediately (before first paint) to avoid flash
+    if (saved) document.documentElement.classList.add('light')
+    return saved
+  })
 
   useEffect(() => {
     document.documentElement.classList.toggle('light', light)
@@ -43,27 +48,28 @@ export default function Layout() {
             <Stethoscope size={18} className="text-accent" />
             <span className="absolute -bottom-0.5 -right-1.5 text-[9px] font-black text-green-400 leading-none">$</span>
           </div>
-          <span className="font-semibold tracking-tight text-sm leading-tight">Financial Wellness</span>
+          <span className="font-semibold tracking-tight text-sm leading-tight text-slate-200">Financial Wellness</span>
         </div>
 
         {/* Nav links */}
         <nav className="flex-1 p-2 space-y-0.5">
-          <p className="text-[10px] text-muted uppercase tracking-widest px-3 pt-2 pb-1">Overview</p>
+          <p className="text-[10px] text-muted uppercase tracking-widest px-3 pt-2 pb-1 select-none">Overview</p>
           {nav('/',          LayoutDashboard, 'Dashboard')}
 
           <p className="text-[10px] text-muted uppercase tracking-widest px-3 pt-3 pb-1">Stocks</p>
-          {nav('/watchlist', BarChart2,       'Watchlist')}
-          {nav('/alerts',    Bell,            'Alerts')}
-          {nav('/dividends', Landmark,        'Dividends')}
+          {nav('/watchlist', BarChart2, 'Watchlist')}
+          {nav('/alerts',    Bell,      'Alerts')}
 
-          <p className="text-[10px] text-muted uppercase tracking-widest px-3 pt-3 pb-1">Net Worth</p>
+          <p className="text-[10px] text-muted uppercase tracking-widest px-3 pt-3 pb-1">Financial Assets</p>
           {nav('/retirement', PiggyBank, 'Retirement')}
           {nav('/workstock',  Briefcase, 'Work Stock')}
-          {nav('/assets',     Layers,    'Assets')}
+          {nav('/assets',     Layers,    'Physical Assets')}
+          {nav('/liquid',     Wallet,    'Liquid Assets')}
 
           <p className="text-[10px] text-muted uppercase tracking-widest px-3 pt-3 pb-1">Planning</p>
-          {nav('/mortgage',  Home,  'Mortgage')}
-          {nav('/strategy',  Scale, 'Payoff vs. Invest')}
+          {nav('/mortgage',  Home,     'Mortgage')}
+          {nav('/strategy',  Scale,    'Payoff vs. Invest')}
+          {nav('/dividends', Landmark, 'Dividends')}
         </nav>
 
         {/* ── Theme toggle ──────────────────────────────────────── */}
