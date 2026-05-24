@@ -29,7 +29,6 @@ export default function HistoryPage() {
                     <div className="flex items-center gap-2">
                       <span className="mono text-sm font-semibold text-accent">{e.ticker_symbol}</span>
                       <span className="font-medium">{e.rule_name}</span>
-                      </span>
                     </div>
                     <p className="text-xs text-muted mt-0.5">
                       {new Date(e.triggered_at).toLocaleString()}

@@ -101,6 +101,9 @@ def fetch_indicators(symbol: str) -> Optional[dict]:
     try:
         df = yf.download(symbol, period="6mo", interval="1d",
                          progress=False, auto_adjust=True)
+        # yfinance 0.2.50+ returns a MultiIndex (Price, Ticker) — flatten to simple names
+        if isinstance(df.columns, __import__('pandas').MultiIndex):
+            df.columns = df.columns.droplevel(1)
         if df.empty or len(df) < 30:
             return None
 
@@ -138,9 +141,9 @@ def fetch_indicators(symbol: str) -> Optional[dict]:
             "sma_200":     _last(sma200),
             "ema_12":      _last(ema12),
             "ema_26":      _last(ema26),
-            "bb_upper":    _last(bb["BBU_20_2.0"]) if bb is not None else None,
-            "bb_mid":      _last(bb["BBM_20_2.0"]) if bb is not None else None,
-            "bb_lower":    _last(bb["BBL_20_2.0"]) if bb is not None else None,
+            "bb_upper":    _last(bb["BBU_20_2.0_2.0"]) if bb is not None else None,
+            "bb_mid":      _last(bb["BBM_20_2.0_2.0"]) if bb is not None else None,
+            "bb_lower":    _last(bb["BBL_20_2.0_2.0"]) if bb is not None else None,
         }
 
         # Append pattern detection

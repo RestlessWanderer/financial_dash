@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 
 from models.db import Ticker, TickerCreate, IndicatorCache
 from services.indicators import fetch_indicators, INDICATOR_META
-from backend.database import get_session
+from database import get_session
 
 router = APIRouter(prefix="/tickers", tags=["tickers"])
 

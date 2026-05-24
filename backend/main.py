@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from backend.database import init_db, engine
+from database import init_db, engine
 from routers import tickers, alerts
 from services.scheduler import start_scheduler, stop_scheduler
 

@@ -1,29 +1,30 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api'
-import { Plus, RefreshCw, Trash2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Plus, RefreshCw, Trash2, TrendingUp, TrendingDown, Minus, BarChart2 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-function IndicatorBadge({ label, value, unit = '' }) {
+function Stat({ label, value }) {
   if (value === null || value === undefined) return null
   return (
-    <div className="flex flex-col">
-      <span className="text-xs text-muted">{label}</span>
-      <span className="mono text-sm font-medium">
-        {unit === '$' ? '$' : ''}{typeof value === 'number' ? value.toFixed(2) : value}{unit !== '$' ? unit : ''}
-      </span>
+    <div className="flex flex-col items-start min-w-0">
+      <span className="text-[10px] text-muted uppercase tracking-wide leading-none mb-0.5">{label}</span>
+      <span className="mono text-xs font-medium text-slate-200 truncate">{value}</span>
     </div>
   )
 }
 
-function PatternBadge({ label, active }) {
+function PatternPill({ label, active }) {
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${active ? 'badge-green' : 'badge-muted'}`}>
-      {label} {active ? '✓' : '—'}
+    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${
+      active ? 'bg-green-500/15 text-green-400 border border-green-500/20'
+              : 'bg-white/5 text-muted border border-white/5'
+    }`}>
+      {label}
     </span>
   )
 }
 
-function TickerCard({ ticker, onRemove, onRefresh }) {
+function TickerRow({ ticker, onRemove, onRefresh }) {
   const [chart, setChart] = useState([])
   const [loading, setLoading] = useState(false)
   const ind = ticker.indicators || {}
@@ -31,9 +32,8 @@ function TickerCard({ ticker, onRemove, onRefresh }) {
   const change = price && ind.open ? ((price - ind.open) / ind.open * 100) : null
 
   useEffect(() => {
-    // Fetch full indicators with history for chart
     api.getIndicators(ticker.symbol).then(data => {
-      if (data.history) setChart(data.history)
+      if (data?.history) setChart(data.history)
     }).catch(() => {})
   }, [ticker.symbol])
 
@@ -44,95 +44,92 @@ function TickerCard({ ticker, onRemove, onRefresh }) {
   }
 
   const changeColor = change === null ? 'text-muted' : change >= 0 ? 'text-green-400' : 'text-red-400'
-  const ChangeIcon = change === null ? Minus : change >= 0 ? TrendingUp : TrendingDown
+  const ChangeIcon  = change === null ? Minus : change >= 0 ? TrendingUp : TrendingDown
+  const lineColor   = change === null || change >= 0 ? '#22c55e' : '#ef4444'
 
   return (
-    <div className="card flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold mono">{ticker.symbol}</h2>
-            <span className={`flex items-center gap-1 text-sm ${changeColor}`}>
-              <ChangeIcon size={14} />
-              {change !== null ? `${change >= 0 ? '+' : ''}${change.toFixed(2)}%` : '—'}
-            </span>
-          </div>
-          <p className="text-muted text-xs mt-0.5">
-            {ticker.cache_age_minutes !== null
-              ? `Updated ${ticker.cache_age_minutes}m ago`
-              : 'Not yet fetched'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={refresh} disabled={loading}
-            className="p-1.5 rounded-lg text-muted hover:text-slate-200 hover:bg-white/5 transition-colors">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button onClick={() => onRemove(ticker.symbol)}
-            className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/5 transition-colors">
-            <Trash2 size={14} />
-          </button>
+    <div className="card flex items-center gap-4 py-3 px-4">
+
+      {/* Symbol + age */}
+      <div className="w-16 shrink-0">
+        <div className="mono font-semibold text-sm">{ticker.symbol}</div>
+        <div className="text-[10px] text-muted mt-0.5">
+          {ticker.cache_age_minutes !== null ? `${ticker.cache_age_minutes}m ago` : '—'}
         </div>
       </div>
 
-      {/* Price */}
-      {price && (
-        <div className="mono text-3xl font-semibold">
-          ${price.toFixed(2)}
+      {/* Price + change */}
+      <div className="w-24 shrink-0">
+        <div className="mono text-base font-semibold">
+          {price ? `$${price.toFixed(2)}` : '—'}
         </div>
-      )}
+        <div className={`flex items-center gap-0.5 text-[11px] ${changeColor}`}>
+          <ChangeIcon size={10} />
+          {change !== null ? `${change >= 0 ? '+' : ''}${change.toFixed(2)}%` : '—'}
+        </div>
+      </div>
 
-      {/* Mini chart */}
-      {chart.length > 0 && (
-        <div className="h-24 -mx-2">
+      {/* Sparkline */}
+      <div className="shrink-0" style={{ width: 160, height: 44 }}>
+        {chart.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chart}>
-              <Line
-                type="monotone"
-                dataKey="close"
-                stroke={change >= 0 ? '#22c55e' : '#ef4444'}
-                dot={false}
-                strokeWidth={1.5}
-              />
+            <LineChart data={chart} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+              <Line type="monotone" dataKey="close" stroke={lineColor}
+                    dot={false} strokeWidth={1.5} isAnimationActive={false} />
               <XAxis dataKey="date" hide />
               <YAxis domain={['auto', 'auto']} hide />
               <Tooltip
-                contentStyle={{ background: '#161b27', border: '1px solid #1e2535', borderRadius: 8, fontSize: 12 }}
+                contentStyle={{ background: '#161b27', border: '1px solid #1e2535', borderRadius: 6, fontSize: 11 }}
                 labelStyle={{ color: '#64748b' }}
                 formatter={(v) => [`$${v.toFixed(2)}`, 'Close']}
               />
             </LineChart>
           </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Indicators grid */}
-      <div className="grid grid-cols-3 gap-3 pt-2 border-t border-border">
-        <IndicatorBadge label="RSI 14"   value={ind.rsi}         />
-        <IndicatorBadge label="MACD"     value={ind.macd}        />
-        <IndicatorBadge label="Vol ×"    value={ind.volume_ratio} unit="x" />
-        <IndicatorBadge label="SMA 50"   value={ind.sma_50}      unit="$" />
-        <IndicatorBadge label="SMA 200"  value={ind.sma_200}     unit="$" />
-        <IndicatorBadge label="BB Upper" value={ind.bb_upper}    unit="$" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-[10px] text-muted">no data</div>
+        )}
       </div>
 
-      {/* Pattern badges */}
-      <div className="flex flex-wrap gap-2">
-        <PatternBadge label="MMBM Sweep"  active={ind.mmbm_sweep}  />
-        <PatternBadge label="MMBM Signal" active={ind.mmbm_signal} />
-        <PatternBadge label="MMSM Sweep"  active={ind.mmsm_sweep}  />
-        <PatternBadge label="MMSM Signal" active={ind.mmsm_signal} />
+      {/* Indicators */}
+      <div className="flex items-center gap-4 flex-1 min-w-0">
+        <Stat label="RSI"    value={ind.rsi        != null ? ind.rsi.toFixed(1)        : null} />
+        <Stat label="MACD"   value={ind.macd       != null ? ind.macd.toFixed(3)       : null} />
+        <Stat label="Vol×"   value={ind.volume_ratio != null ? `${ind.volume_ratio}x`  : null} />
+        <Stat label="SMA 50" value={ind.sma_50     != null ? `$${ind.sma_50.toFixed(0)}` : null} />
+        <Stat label="SMA200" value={ind.sma_200    != null ? `$${ind.sma_200.toFixed(0)}` : null} />
+        <Stat label="BB↑"    value={ind.bb_upper   != null ? `$${ind.bb_upper.toFixed(0)}` : null} />
+        <Stat label="BB↓"    value={ind.bb_lower   != null ? `$${ind.bb_lower.toFixed(0)}` : null} />
       </div>
+
+      {/* Pattern pills */}
+      <div className="flex items-center gap-1 shrink-0">
+        <PatternPill label="MMBM sweep"  active={ind.mmbm_sweep}  />
+        <PatternPill label="MMBM sig"    active={ind.mmbm_signal} />
+        <PatternPill label="MMSM sweep"  active={ind.mmsm_sweep}  />
+        <PatternPill label="MMSM sig"    active={ind.mmsm_signal} />
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1 shrink-0">
+        <button onClick={refresh} disabled={loading}
+          className="p-1.5 rounded-lg text-muted hover:text-slate-200 hover:bg-white/5 transition-colors">
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+        </button>
+        <button onClick={() => onRemove(ticker.symbol)}
+          className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/5 transition-colors">
+          <Trash2 size={13} />
+        </button>
+      </div>
+
     </div>
   )
 }
 
 export default function Dashboard() {
   const [tickers, setTickers] = useState([])
-  const [symbol, setSymbol] = useState('')
-  const [error, setError] = useState('')
-  const [adding, setAdding] = useState(false)
+  const [symbol, setSymbol]   = useState('')
+  const [error, setError]     = useState('')
+  const [adding, setAdding]   = useState(false)
 
   const load = useCallback(async () => {
     const data = await api.getTickers()
@@ -156,21 +153,13 @@ export default function Dashboard() {
     }
   }
 
-  const removeTicker = async (sym) => {
-    await api.removeTicker(sym)
-    await load()
-  }
-
-  const refreshTicker = async (sym) => {
-    await api.getIndicators(sym)
-    await load()
-  }
+  const removeTicker  = async (sym) => { await api.removeTicker(sym);  await load() }
+  const refreshTicker = async (sym) => { await api.getIndicators(sym); await load() }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Watchlist</h1>
-        {/* Add ticker */}
         <div className="flex items-center gap-2">
           <input
             value={symbol}
@@ -200,9 +189,9 @@ export default function Dashboard() {
           <p>No tickers yet. Add one above to get started.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="flex flex-col gap-2">
           {tickers.map(t => (
-            <TickerCard
+            <TickerRow
               key={t.symbol}
               ticker={t}
               onRemove={removeTicker}

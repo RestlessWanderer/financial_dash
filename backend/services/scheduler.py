@@ -163,7 +163,7 @@ def start_scheduler(engine):
     scheduler.add_job(
         run_checks,
         trigger="cron",
-        minute="*/15",
+        minute="*/5",
         day_of_week="mon-fri",
         hour="9-16",
         args=[engine],
@@ -171,7 +171,7 @@ def start_scheduler(engine):
         replace_existing=True,
     )
     scheduler.start()
-    print("[scheduler] Started — checks every 15 min during market hours")
+    print("[scheduler] Started — checks every 5 min during market hours")
 
 
 def stop_scheduler():

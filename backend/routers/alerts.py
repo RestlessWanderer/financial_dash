@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from models.db import AlertRule, AlertRuleCreate, AlertRuleUpdate, AlertEvent
-from backend.database import get_session
+from database import get_session
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -89,6 +89,6 @@ def get_pending():
 def run_now():
     """Manually trigger an alert check (useful for testing outside market hours)."""
     from services.scheduler import run_checks
-    from backend.database import engine
+    from database import engine
     run_checks(engine)
     return {"ok": True, "message": "Alert check triggered"}
