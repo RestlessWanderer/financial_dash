@@ -32,4 +32,8 @@ export const api = {
 
   // Manual trigger
   runNow:      ()           => request('/alerts/run-now', { method: 'POST' }),
+
+  // Dividend portfolio
+  getDividends:     () => request('/dividends/'),
+  refreshDividends: () => request('/dividends/refresh', { method: 'POST' }),
 }

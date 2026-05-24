@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { BarChart2, Bell, Clock, Activity } from 'lucide-react'
+import { BarChart2, Bell, Clock, Activity, Landmark } from 'lucide-react'
 import { useAlertNotifications } from '../hooks/useAlertNotifications'
 import ToastContainer from './ToastContainer'
 
@@ -31,9 +31,10 @@ export default function Layout() {
           <span className="font-semibold tracking-tight">StockTracker</span>
         </div>
         <nav className="flex items-center gap-1">
-          {nav('/',        BarChart2, 'Dashboard')}
-          {nav('/alerts',  Bell,      'Alerts')}
-          {nav('/history', Clock,     'History')}
+          {nav('/',          BarChart2, 'Dashboard')}
+          {nav('/alerts',    Bell,      'Alerts')}
+          {nav('/history',   Clock,     'History')}
+          {nav('/dividends', Landmark,  'Dividends')}
         </nav>
       </header>
 

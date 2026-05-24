@@ -74,6 +74,19 @@ class AlertRuleUpdate(SQLModel):
     enabled: Optional[bool] = None
 
 
+class DividendSnapshot(SQLModel, table=True):
+    """One row per ticker — refreshed in bulk, queried sorted by yield."""
+    symbol:           str            = Field(primary_key=True)
+    name:             str            = Field(default="")
+    sector:           str            = Field(default="—")
+    price:            float          = Field(default=0.0)
+    annual_dividend:  float          = Field(default=0.0)
+    dividend_yield:   float          = Field(default=0.0)  # decimal, e.g. 0.05 = 5 %
+    payout_ratio:     Optional[float] = None
+    ex_dividend_date: Optional[str]  = None
+    fetched_at:       datetime       = Field(default_factory=datetime.utcnow)
+
+
 class SettingsUpdate(SQLModel):
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None
