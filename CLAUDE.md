@@ -44,11 +44,15 @@ stock-tracker/
 │   ├── requirements.txt
 │   ├── main.py                       # FastAPI app + lifespan (starts scheduler)
 │   ├── database.py                   # SQLite engine, get_session, init_db
-│   ├── models/db.py                  # SQLModel tables + Pydantic schemas
+│   ├── models/
+│   │   ├── __init__.py
+│   │   └── db.py                     # SQLModel tables + Pydantic schemas
 │   ├── routers/
+│   │   ├── __init__.py
 │   │   ├── tickers.py                # GET/POST/DELETE /tickers, GET /tickers/{symbol}/indicators
 │   │   └── alerts.py                 # CRUD /alerts/rules, GET /alerts/events, GET /alerts/pending, POST /alerts/run-now
 │   └── services/
+│       ├── __init__.py
 │       ├── indicators.py             # fetch_indicators(), evaluate_rule_tree(), detect_mmbm(), detect_mmsm()
 │       └── scheduler.py             # APScheduler, run_checks(), send_email(), pending_notifications list
 └── frontend/

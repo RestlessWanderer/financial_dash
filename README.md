@@ -16,12 +16,14 @@ stock-tracker/
 │   ├── main.py                  # FastAPI app entry point
 │   ├── database.py              # SQLite engine + session
 │   ├── models/
+│   │   ├── __init__.py
 │   │   └── db.py                # DB tables + request/response schemas
 │   ├── routers/
 │   │   ├── __init__.py
 │   │   ├── tickers.py           # Watchlist CRUD + indicator fetch
 │   │   └── alerts.py            # Alert rules, events, notifications
 │   └── services/
+│       ├── __init__.py
 │       ├── indicators.py        # yfinance + pandas-ta + MMBM/MMSM detection
 │       └── scheduler.py         # APScheduler + email notifications
 ├── frontend/
@@ -46,6 +48,7 @@ stock-tracker/
 │           └── HistoryPage.jsx  # Fired alert history log
 ├── .env.example                 # Environment variable template
 ├── .gitignore
+├── CLAUDE.md                    # Project context for Claude
 ├── docker-compose.yml           # Orchestrates backend + frontend containers
 ├── Makefile                     # Easy start/stop commands
 └── README.md
