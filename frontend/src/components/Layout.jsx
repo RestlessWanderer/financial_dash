@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { BarChart2, Bell, Clock, Activity, Landmark } from 'lucide-react'
+import { BarChart2, Bell, Clock, Activity, Landmark, Home } from 'lucide-react'
 import { useAlertNotifications } from '../hooks/useAlertNotifications'
 import ToastContainer from './ToastContainer'
 
@@ -35,6 +35,7 @@ export default function Layout() {
           {nav('/alerts',    Bell,      'Alerts')}
           {nav('/history',   Clock,     'History')}
           {nav('/dividends', Landmark,  'Dividends')}
+          {nav('/mortgage',  Home,      'Mortgage')}
         </nav>
       </header>
 
