@@ -18,13 +18,16 @@ def list_tickers(session: Session = Depends(get_session)):
         cache = session.exec(
             select(IndicatorCache).where(IndicatorCache.symbol == t.symbol)
         ).first()
-        indicators = json.loads(cache.data) if cache else {}
+        cached = json.loads(cache.data) if cache else {}
+        history    = cached.pop("history", [])
+        indicators = cached
         result.append({
             "id": t.id,
             "symbol": t.symbol,
             "name": t.name,
             "added_at": t.added_at,
             "indicators": indicators,
+            "history": history,
             "cache_age_minutes": (
                 round((datetime.utcnow() - cache.fetched_at).total_seconds() / 60, 1)
                 if cache else None
@@ -56,10 +59,10 @@ def add_ticker(body: TickerCreate, session: Session = Depends(get_session)):
     session.commit()
     session.refresh(ticker)
 
-    # Seed cache
+    # Seed cache (history included so sparklines work without a separate fetch)
     cache = IndicatorCache(
         symbol=symbol,
-        data=json.dumps({k: v for k, v in data.items() if k != "history"}),
+        data=json.dumps(data),
     )
     session.add(cache)
     session.commit()
@@ -96,12 +99,12 @@ def get_indicators(symbol: str, session: Session = Depends(get_session)):
         select(IndicatorCache).where(IndicatorCache.symbol == symbol.upper())
     ).first()
     if cache:
-        cache.data = json.dumps({k: v for k, v in data.items() if k != "history"})
+        cache.data = json.dumps(data)   # history included for sparklines
         cache.fetched_at = datetime.utcnow()
     else:
         cache = IndicatorCache(
             symbol=symbol.upper(),
-            data=json.dumps({k: v for k, v in data.items() if k != "history"}),
+            data=json.dumps(data),
         )
     session.add(cache)
     session.commit()

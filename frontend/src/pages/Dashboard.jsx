@@ -25,17 +25,15 @@ function PatternPill({ label, active }) {
 }
 
 function TickerRow({ ticker, onRemove, onRefresh }) {
-  const [chart, setChart] = useState([])
   const [loading, setLoading] = useState(false)
   const ind = ticker.indicators || {}
   const price = ind.price
   const change = price && ind.open ? ((price - ind.open) / ind.open * 100) : null
 
-  useEffect(() => {
-    api.getIndicators(ticker.symbol).then(data => {
-      if (data?.history) setChart(data.history)
-    }).catch(() => {})
-  }, [ticker.symbol])
+  // History comes from the getTickers response — no separate fetch needed.
+  // Kept in state so it updates when the user explicitly refreshes this row.
+  const [chart, setChart] = useState(ticker.history || [])
+  useEffect(() => { setChart(ticker.history || []) }, [ticker.history])
 
   const refresh = async () => {
     setLoading(true)
@@ -92,14 +90,11 @@ function TickerRow({ ticker, onRemove, onRefresh }) {
 
       {/* Indicators */}
       <div className="flex items-center gap-4 flex-1 min-w-0">
-        <Stat label="RSI"    value={ind.rsi        != null ? ind.rsi.toFixed(1)        : null} />
-        <Stat label="MACD"   value={ind.macd       != null ? ind.macd.toFixed(3)       : null} />
-        <Stat label="Vol×"   value={ind.volume_ratio != null ? `${ind.volume_ratio}x`  : null} />
-        <Stat label="SKS"    value={ind.sks_ratio  != null ? `${ind.sks_ratio}x`       : null} />
-        <Stat label="SMA 50" value={ind.sma_50     != null ? `$${ind.sma_50.toFixed(0)}` : null} />
-        <Stat label="SMA200" value={ind.sma_200    != null ? `$${ind.sma_200.toFixed(0)}` : null} />
-        <Stat label="BB↑"    value={ind.bb_upper   != null ? `$${ind.bb_upper.toFixed(0)}` : null} />
-        <Stat label="BB↓"    value={ind.bb_lower   != null ? `$${ind.bb_lower.toFixed(0)}` : null} />
+        <Stat label="RSI"    value={ind.rsi          != null ? ind.rsi.toFixed(1)          : null} />
+        <Stat label="MACD"   value={ind.macd         != null ? ind.macd.toFixed(3)         : null} />
+        <Stat label="Vol×"   value={ind.volume_ratio != null ? `${ind.volume_ratio}x`      : null} />
+        <Stat label="SKS"    value={ind.sks_ratio    != null ? `${ind.sks_ratio}x`         : null} />
+        <Stat label="SMA200" value={ind.sma_200      != null ? `$${ind.sma_200.toFixed(0)}` : null} />
       </div>
 
       {/* Pattern pills */}
