@@ -192,6 +192,19 @@ export default function MortgagePage() {
     localStorage.setItem('mortgage_config', JSON.stringify(form))
   }
 
+  const handleClear = () => {
+    // Cancel any in-flight debounce timers
+    Object.values(debounceRef.current).forEach(clearTimeout)
+    debounceRef.current = {}
+    setForm({ startDate: '', years: '30', rate: '', principal: '' })
+    setCalculated(false)
+    setExtras({})
+    setExtraInputs({})
+    setExpanded(new Set())
+    localStorage.removeItem('mortgage_config')
+    localStorage.removeItem('mortgage_extras')
+  }
+
   const handleExtra = useCallback((idx, raw) => {
     const key = String(idx)
     setExtraInputs(prev => ({ ...prev, [key]: raw }))
@@ -297,13 +310,21 @@ export default function MortgagePage() {
           </div>
 
         </div>
-        <button
-          onClick={handleCalc}
-          disabled={!form.startDate || !form.rate || !form.principal}
-          className="bg-accent/15 text-accent border border-accent/30 px-5 py-2 rounded-lg text-sm font-semibold hover:bg-accent/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Calculate Amortization
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleCalc}
+            disabled={!form.startDate || !form.rate || !form.principal}
+            className="bg-accent/15 text-accent border border-accent/30 px-5 py-2 rounded-lg text-sm font-semibold hover:bg-accent/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Calculate Amortization
+          </button>
+          <button
+            onClick={handleClear}
+            className="text-muted border border-border px-4 py-2 rounded-lg text-sm font-medium hover:border-red-500/40 hover:text-red-400 transition-colors"
+          >
+            Clear All
+          </button>
+        </div>
       </div>
 
       {/* ── Results ────────────────────────────────────────────── */}
