@@ -2,8 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { api } from '../api'
 import { RefreshCw, Landmark } from 'lucide-react'
 
-const TARGET    = 100_000   // single goal: $100K/yr
-const MIN_YIELD = 0.05
+const TARGET          = 100_000   // single goal: $100K/yr
+const MIN_YIELD       = 0.05
+const MILESTONES      = [25_000, 50_000, 75_000, 100_000]
+const MILESTONE_LABELS = ['$25K', '$50K', '$75K', '$100K']
 
 function usd(n, dec = 0) {
   return n.toLocaleString('en-US', {
@@ -328,7 +330,46 @@ export default function DividendPage() {
             </div>
           </div>
 
-          {/* 3. Allocation table */}
+          {/* 3. Milestone progress strip */}
+          <div className="grid grid-cols-4 gap-2">
+            {MILESTONES.map((m, i) => {
+              const p    = buildPlan(qualified, m)
+              const toGoM = Math.max(0, p.totalNeeded - totalActuallyInvested)
+              const done  = toGoM === 0
+              return (
+                <div key={m}
+                  className={`card p-3 border ${
+                    done
+                      ? 'border-green-500/50 bg-green-500/[0.07]'
+                      : 'border-border'
+                  }`}
+                >
+                  <p className={`text-xs font-semibold mb-1 ${done ? 'text-green-400' : 'text-muted'}`}>
+                    {MILESTONE_LABELS[i]}/yr
+                    {done && <span className="ml-1">✓</span>}
+                  </p>
+                  <p className="mono text-sm font-bold text-slate-200">{usd(p.totalNeeded)}</p>
+                  <p className="text-[10px] text-muted mb-2">total needed</p>
+                  <div className="border-t border-border/50 pt-2 space-y-1">
+                    <div className="flex items-baseline justify-between gap-1">
+                      <span className="text-[10px] text-muted">invested</span>
+                      <span className="mono text-[11px] text-green-400 font-medium">
+                        {usd(totalActuallyInvested)}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-1">
+                      <span className="text-[10px] text-muted">to go</span>
+                      <span className={`mono text-[11px] font-medium ${done ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {done ? '✓ done' : usd(toGoM)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* 4. Allocation table */}
           <div className="card p-0 overflow-x-auto">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <span className="text-sm font-medium">
@@ -350,16 +391,14 @@ export default function DividendPage() {
                   <th className="px-3 py-3 text-right">Invest</th>
                   <th className="px-3 py-3 text-right">Shares Goal</th>
                   <th className="px-3 py-3 text-right">Shares Owned</th>
-                  <th className="px-3 py-3 text-right text-green-400/70">Income / yr</th>
-                  <th className="px-3 py-3 text-right text-green-400">Projected / yr</th>
+                  <th className="px-3 py-3 text-right text-green-400/70">Target Income / yr</th>
                 </tr>
               </thead>
               <tbody>
                 {plan.rows.map((s, i) => {
-                  const owned           = getOwned(s.symbol)
-                  const sharesGoal      = Math.max(0, s.targetShares - owned)
-                  const projectedIncome = owned * s.annual_dividend
-                  const goalMet         = owned >= s.targetShares
+                  const owned      = getOwned(s.symbol)
+                  const sharesGoal = Math.max(0, s.targetShares - owned)
+                  const goalMet    = owned >= s.targetShares
 
                   return (
                     <tr key={s.symbol}
@@ -399,14 +438,6 @@ export default function DividendPage() {
                       {/* Target income */}
                       <td className="px-3 py-2.5 text-right mono text-green-400/60">
                         {usd(s.targetIncome)}
-                      </td>
-
-                      {/* Projected income from owned shares */}
-                      <td className="px-3 py-2.5 text-right mono font-medium">
-                        {projectedIncome > 0
-                          ? <span className="text-green-400">{usd(projectedIncome)}</span>
-                          : <span className="text-muted">—</span>
-                        }
                       </td>
                     </tr>
                   )
