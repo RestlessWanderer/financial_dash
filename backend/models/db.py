@@ -97,23 +97,26 @@ class DividendSnapshot(SQLModel, table=True):
 
 class LiquidAccount(SQLModel, table=True):
     """A manually-tracked liquid account (checking, savings, HYSA, etc.)."""
-    id:           Optional[int] = Field(default=None, primary_key=True)
-    name:         str           = Field(default="")
-    account_type: str           = Field(default="Checking")  # Checking | Savings | HYSA | Money Market | CD | Other
-    value:        float         = Field(default=0.0)
-    updated_at:   datetime      = Field(default_factory=datetime.utcnow)
+    id:           Optional[int]   = Field(default=None, primary_key=True)
+    name:         str             = Field(default="")
+    account_type: str             = Field(default="Checking")  # Checking | Savings | HYSA | Money Market | CD | Other
+    value:        float           = Field(default=0.0)
+    apy:          Optional[float] = Field(default=None)        # Annual Percentage Yield, e.g. 4.5 = 4.5%
+    updated_at:   datetime        = Field(default_factory=datetime.utcnow)
 
 
 class LiquidAccountCreate(SQLModel):
     name:         str
-    account_type: str   = "Checking"
-    value:        float = 0.0
+    account_type: str            = "Checking"
+    value:        float          = 0.0
+    apy:          Optional[float] = None
 
 
 class LiquidAccountUpdate(SQLModel):
     name:         Optional[str]   = None
     account_type: Optional[str]   = None
     value:        Optional[float] = None
+    apy:          Optional[float] = None
 
 
 class RetirementAccount(SQLModel, table=True):

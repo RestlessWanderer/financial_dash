@@ -16,6 +16,7 @@ def init_db():
     # Column migrations — safe to run on every startup; each is a no-op if already present
     _migrations = [
         "ALTER TABLE dividendholding ADD COLUMN user_added INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE liquidaccount ADD COLUMN apy REAL",
     ]
     with engine.connect() as conn:
         for stmt in _migrations:

@@ -99,3 +99,26 @@ body {
 .light .border-border\/40,
 .light .border-border\/30,
 .light .border-border\/20 { border-color: rgba(var(--color-border) / 0.6); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   SHADE-VARIANT RESTORATION
+   green and red are defined as flat single-value custom colors in
+   tailwind.config.js, which replaces their entire default shade
+   palette. Tailwind generates no CSS for text-green-400, text-red-400,
+   etc., so those elements inherit the body color (black in light mode).
+   Restore them here so they work in both themes.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Dark-mode values — match Tailwind's default palette */
+.text-green-300 { color: #86efac; }
+.text-green-400 { color: #4ade80; }
+.text-red-300   { color: #fca5a5; }
+.text-red-400   { color: #f87171; }
+
+/* Light-mode overrides — darker shades for contrast on white */
+.light .text-green-300 { color: #15803d; }  /* green-700 */
+.light .text-green-400 { color: #16a34a; }  /* green-600 */
+.light .text-red-300   { color: #b91c1c; }  /* red-700   */
+.light .text-red-400   { color: #dc2626; }  /* red-600   */
+.light .text-blue-300  { color: #1e40af; }  /* blue-800  */
+.light .text-amber-400 { color: #b45309; }  /* amber-700 */

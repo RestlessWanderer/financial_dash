@@ -21,6 +21,7 @@ def create_account(body: LiquidAccountCreate, session: Session = Depends(get_ses
         name=body.name.strip(),
         account_type=body.account_type,
         value=body.value,
+        apy=body.apy,
     )
     session.add(row)
     session.commit()
@@ -41,6 +42,7 @@ def update_account(
     if body.name         is not None: row.name         = body.name.strip()
     if body.account_type is not None: row.account_type = body.account_type
     if body.value        is not None: row.value        = body.value
+    if body.apy          is not None: row.apy          = body.apy
     row.updated_at = datetime.utcnow()
     session.add(row)
     session.commit()

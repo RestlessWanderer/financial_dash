@@ -53,6 +53,12 @@ export const api = {
   etradeDisconnect:   ()           => request('/workstock/etrade/disconnect', { method: 'DELETE' }),
   etradePortfolio:    ()           => request('/workstock/etrade/portfolio'),
 
+  // Inflation rate (BLS CPI-U)
+  getInflationRate:  () => request('/inflation/current'),
+
+  // Consumer staples average retail prices (BLS APU)
+  getStaplePrices:   () => request('/staples/prices'),
+
   // Liquid accounts (checking, savings, HYSA, etc.)
   getLiquidAccounts:    ()           => request('/liquid/'),
   createLiquidAccount:  (body)       => request('/liquid/', { method: 'POST', body: JSON.stringify(body) }),
