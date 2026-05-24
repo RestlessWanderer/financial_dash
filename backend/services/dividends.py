@@ -97,19 +97,28 @@ def _fetch_one(symbol: str) -> Optional[dict]:
             return None
         price = float(price)
 
-        # --- dividend rate & yield (trailing preferred over forward) ---
-        div_rate = float(
-            info.get("trailingAnnualDividendRate")
-            or info.get("dividendRate")
-            or 0
-        )
+        # --- dividend yield ---
+        # Stocks:  trailingAnnualDividendYield is a decimal (e.g. 0.05)
+        # ETFs:    trailingAnnualDividendYield is often 0.0; use 'yield' instead
+        #          (also a decimal). Avoid 'dividendYield' — some ETFs return it
+        #          as a whole percentage (e.g. 8.29) rather than a decimal.
         div_yield = float(
-            info.get("trailingAnnualDividendYield")
-            or info.get("dividendYield")
-            or 0
+            info.get("trailingAnnualDividendYield") or
+            info.get("yield") or
+            0
         )
-        if div_rate <= 0 or div_yield <= 0:
+        if div_yield <= 0:
             return None
+
+        # --- dividend rate (annual $ per share) ---
+        # If not provided directly (common for ETFs), derive from yield × price.
+        div_rate = float(
+            info.get("trailingAnnualDividendRate") or
+            info.get("dividendRate") or
+            0
+        )
+        if div_rate <= 0:
+            div_rate = div_yield * price   # derived
 
         # --- ex-dividend date (Unix ts → ISO string) ---
         ex_ts = info.get("exDividendDate")
