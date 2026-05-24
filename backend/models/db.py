@@ -94,6 +94,24 @@ class DividendSnapshot(SQLModel, table=True):
     fetched_at:       datetime       = Field(default_factory=datetime.utcnow)
 
 
+class RetirementAccount(SQLModel, table=True):
+    """A manually-tracked retirement account (401k, IRA, Roth, etc.)."""
+    id:         Optional[int] = Field(default=None, primary_key=True)
+    name:       str           = Field(default="")
+    value:      float         = Field(default=0.0)
+    updated_at: datetime      = Field(default_factory=datetime.utcnow)
+
+
+class RetirementAccountCreate(SQLModel):
+    name:  str
+    value: float = 0.0
+
+
+class RetirementAccountUpdate(SQLModel):
+    name:  Optional[str]   = None
+    value: Optional[float] = None
+
+
 class SettingsUpdate(SQLModel):
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None

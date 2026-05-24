@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import AlertsPage from './pages/AlertsPage'
 import DividendPage from './pages/DividendPage'
 import MortgagePage from './pages/MortgagePage'
+import RetirementPage from './pages/RetirementPage'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -17,6 +18,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="alerts" element={<AlertsPage />} />
           <Route path="dividends" element={<DividendPage />} />
           <Route path="mortgage" element={<MortgagePage />} />
+          <Route path="retirement" element={<RetirementPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -33,6 +33,12 @@ export const api = {
   // Manual trigger
   runNow:      ()           => request('/alerts/run-now', { method: 'POST' }),
 
+  // Retirement accounts
+  getRetirementAccounts:    ()           => request('/retirement/'),
+  createRetirementAccount:  (body)       => request('/retirement/', { method: 'POST', body: JSON.stringify(body) }),
+  updateRetirementAccount:  (id, body)   => request(`/retirement/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteRetirementAccount:  (id)         => request(`/retirement/${id}`, { method: 'DELETE' }),
+
   // Dividend portfolio
   getDividends:          ()               => request('/dividends/'),
   refreshDividends:      ()               => request('/dividends/refresh', { method: 'POST' }),
