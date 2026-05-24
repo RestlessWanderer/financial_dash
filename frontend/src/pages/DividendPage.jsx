@@ -133,8 +133,8 @@ export default function DividendPage() {
           <Landmark size={32} className="mx-auto opacity-30" />
           <p className="font-medium text-slate-300">No data yet</p>
           <p className="text-xs max-w-sm mx-auto">
-            Click <strong className="text-slate-200">Load Data</strong> to screen ~110
-            dividend-paying stocks and build your income plan.
+            Click <strong className="text-slate-200">Load Data</strong> to screen
+            dividend-paying stocks and ETFs and build your income plan.
           </p>
         </div>
       )}
@@ -283,9 +283,10 @@ export default function DividendPage() {
           </div>
 
           <p className="text-xs text-muted">
-            Only stocks with yield ≥ 5 % included. Equal-weight allocation — each stock gets the same dollar amount.
-            Shares are rounded up so the income target is always met or exceeded.
-            Annual income = shares × trailing 12-month dividend per share. Data via Yahoo Finance · not financial advice.
+            {qualified.length} stocks/ETFs with yield ≥ 5 % shown (screened {data?.count ?? '…'} total with dividend data).
+            Equal-weight allocation — each position gets the same dollar amount.
+            Shares rounded up so the income target is always met or exceeded.
+            Annual income = shares × trailing 12-month dividend. Data via Yahoo Finance · not financial advice.
           </p>
         </>
       )}
