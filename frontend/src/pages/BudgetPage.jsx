@@ -315,6 +315,41 @@ export default function BudgetPage() {
     return keys.reduce((s, k) => s + (parseFloat(defaults[k]) || 0), 0)
   }, [neFlags, defaults, customLabels])
 
+  /* NE savings projection — how much faster bridge capital is funded if NE is cut */
+  const neSavingsProjection = useMemo(() => {
+    if (neTotal <= 0) return null
+    try {
+      const profile     = JSON.parse(localStorage.getItem('user_profile') ?? 'null') ?? {}
+      const age         = parseInt(profile.age)      || null
+      const retireAge   = parseInt(profile.retireAge) || null
+      if (!age || !retireAge || retireAge <= age) return null
+
+      const bridgeYears = Math.max(0, 59.5 - retireAge)
+      if (bridgeYears <= 0) return null
+
+      // Current monthly surplus
+      const pay1 = parseFloat(defaults.pay1) || 0
+      const pay2 = parseFloat(defaults.pay2) || 0
+      const totalIncome = pay1 + pay2
+      const fixedExp    = ['housing', 'utilities', 'groceries'].reduce((s, k) => s + (parseFloat(defaults[k]) || 0), 0)
+      const customExp   = customLabels.reduce((s, _, i) => s + (parseFloat(defaults[`custom_${i}`]) || 0), 0)
+      const currentSurplus = totalIncome - fixedExp - customExp
+      const improvedSurplus = currentSurplus + neTotal
+
+      // Bridge capital (PV annuity at 5%)
+      const annualEssential = (fixedExp + (customExp - neTotal)) * 12
+      if (annualEssential <= 0 || improvedSurplus <= 0) return null
+      const r = 0.05
+      const bridgeCapital = annualEssential * (1 - Math.pow(1 + r, -bridgeYears)) / r
+
+      const monthsCurrent  = currentSurplus  > 0 ? Math.ceil(bridgeCapital / currentSurplus)  : null
+      const monthsImproved = improvedSurplus > 0 ? Math.ceil(bridgeCapital / improvedSurplus) : null
+      const monthsSaved    = (monthsCurrent && monthsImproved) ? monthsCurrent - monthsImproved : null
+
+      return { neTotal, bridgeCapital, monthsCurrent, monthsImproved, monthsSaved, annualNE: neTotal * 12 }
+    } catch { return null }
+  }, [neTotal, defaults, customLabels])
+
   return (
     <div className="space-y-5">
 
@@ -387,6 +422,45 @@ export default function BudgetPage() {
           Click a custom category name to rename it. Click <span className="text-amber-400 font-semibold">NE</span> to flag a custom category as <span className="text-amber-400">Non-Essential</span> — spending that could be reduced or eliminated. Fixed categories (Housing, Utilities, Groceries) are always considered essential.
         </p>
       </div>
+
+      {/* ── NE savings projection ── */}
+      {neSavingsProjection && (
+        <div className="card border border-amber-500/20 bg-amber-500/[0.04] space-y-3">
+          <div className="flex items-start gap-2">
+            <span className="text-lg">✂️</span>
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-slate-200">What if you cut non-essential spending?</p>
+              <p className="text-[10px] text-muted mt-0.5">
+                You have <strong className="text-amber-400">{usd(neSavingsProjection.neTotal)}/mo</strong> ({usd(neSavingsProjection.annualNE)}/yr) flagged as non-essential.
+                Here's how cutting it affects your FIRE bridge capital timeline:
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white/[0.03] rounded-lg px-3 py-2 border border-border/50">
+              <p className="text-[10px] text-muted uppercase tracking-widest mb-0.5">Bridge Capital</p>
+              <p className="mono text-sm font-bold text-slate-200">{usd(neSavingsProjection.bridgeCapital)}</p>
+            </div>
+            <div className="bg-white/[0.03] rounded-lg px-3 py-2 border border-border/50">
+              <p className="text-[10px] text-muted uppercase tracking-widest mb-0.5">Time Without Cuts</p>
+              <p className="mono text-sm font-bold text-rose-400">
+                {neSavingsProjection.monthsCurrent != null ? `${(neSavingsProjection.monthsCurrent / 12).toFixed(1)} yrs` : '—'}
+              </p>
+            </div>
+            <div className="bg-emerald-500/[0.06] rounded-lg px-3 py-2 border border-emerald-500/20">
+              <p className="text-[10px] text-muted uppercase tracking-widest mb-0.5">Time With Cuts</p>
+              <p className="mono text-sm font-bold text-emerald-400">
+                {neSavingsProjection.monthsImproved != null ? `${(neSavingsProjection.monthsImproved / 12).toFixed(1)} yrs` : '—'}
+              </p>
+            </div>
+          </div>
+          {neSavingsProjection.monthsSaved != null && neSavingsProjection.monthsSaved > 0 && (
+            <p className="text-xs text-amber-400 font-medium">
+              💡 Cutting NE spending saves <strong>{Math.round(neSavingsProjection.monthsSaved / 12 * 10) / 10} years</strong> ({neSavingsProjection.monthsSaved} months) on your path to FIRE.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ── Year-grouped table ── */}
       <div className="card p-0 overflow-x-auto">

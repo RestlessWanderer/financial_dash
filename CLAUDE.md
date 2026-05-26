@@ -1,4 +1,4 @@
-# Stock Alert Tracker — Project Context
+# Financial Journey — Project Context
 
 This file gives Claude context about this project for continued development.
 It is auto-loaded by Claude Code at the start of every session.
@@ -11,9 +11,12 @@ A locally-run **personal finance + stock monitoring** web app. Features:
 
 - **Watchlist** — add tickers, view live indicators (RSI, MACD, SMA, BB), mini price charts
 - **Alerts** — build if/and/or alert rules with a visual builder; notified via browser pop-up + optional email
-- **Financial Assets** — Retirement accounts, Work Stock (ESPP/RSU), Physical Assets, Liquid Assets
-- **Planning** — Mortgage calculator (with target payoff year), Payoff vs. Invest comparison, Dividends portfolio
+- **Financial Assets** — Retirement accounts (with retirement projections), Work Stock (ESPP/RSU), Brokerage, Physical Assets, Liquid Assets
+- **Planning** — Budget (with NE flags + FIRE savings impact), Loans, Mortgage, Payoff vs. Invest, Dividends (dynamic goal)
+- **FIRE Journey** — 4-step roadmap (NE spending → loans → mortgage → bridge capital), projected FIRE date + trajectory chart
+- **Profile** — age, desired retirement age, yearly dividend goal, withdrawal rate; drives all projections
 - **Inflation** — Live CPI-U rate from BLS + per-account inflation drag, real return, opportunity cost, consumer staples purchasing power
+- **Milestone Notifications** — one-time toasts for net worth, loan, mortgage, and FIRE milestones
 
 ---
 
@@ -96,7 +99,7 @@ stock-tracker/
 
 ```
 Overview
-  └─ Dashboard (net worth summary)
+  └─ Dashboard (net worth summary + history chart)
 Stocks
   ├─ Watchlist
   └─ Alerts
@@ -107,13 +110,17 @@ Financial Assets
   ├─ Physical Assets
   └─ Liquid Assets
 Planning
+  ├─ Budget
+  ├─ Loans
   ├─ Mortgage
   ├─ Payoff vs. Invest
-  └─ Dividends
+  ├─ Dividends
+  └─ FIRE Journey
 ```
 
-Light/dark mode toggle button is at the bottom of the sidebar.
-Theme is persisted to `localStorage` (`theme: 'light' | 'dark'`).
+Bottom of sidebar (from top to bottom):
+- **Profile** — age, desired retirement age, yearly dividend goal, withdrawal rate (stored in `user_profile` localStorage)
+- **Light/Dark toggle** — persisted to `localStorage` (`theme: 'light' | 'dark'`)
 
 ---
 

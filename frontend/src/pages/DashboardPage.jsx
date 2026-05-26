@@ -5,6 +5,29 @@ import {
   PiggyBank, Briefcase, Layers, Home, Landmark, Wallet,
   TrendingUp, TrendingDown, ArrowRight, BarChart2, CreditCard,
 } from 'lucide-react'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+
+const NW_HISTORY_KEY  = 'nw_history'   // [{ date: 'YYYY-MM-DD', value: number }]
+const NW_HISTORY_MAX  = 365            // keep up to 1 year of daily snapshots
+
+function saveNWSnapshot(value) {
+  if (value == null || isNaN(value)) return
+  const today = new Date().toISOString().slice(0, 10)
+  try {
+    const raw     = localStorage.getItem(NW_HISTORY_KEY)
+    const history = raw ? JSON.parse(raw) : []
+    // Replace today's entry if it already exists, otherwise append
+    const filtered = history.filter(e => e.date !== today)
+    filtered.push({ date: today, value: Math.round(value) })
+    // Keep only the most recent MAX entries
+    const trimmed = filtered.slice(-NW_HISTORY_MAX)
+    localStorage.setItem(NW_HISTORY_KEY, JSON.stringify(trimmed))
+  } catch { /* ignore */ }
+}
+
+function loadNWHistory() {
+  try { return JSON.parse(localStorage.getItem(NW_HISTORY_KEY) ?? 'null') ?? [] } catch { return [] }
+}
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 function usd(n, dec = 0) {
@@ -282,6 +305,15 @@ export default function DashboardPage() {
   const netWorth       = netAssets - netLiabilities
   const nwReady        = !loading
 
+  // Snapshot today's net worth once data is loaded, then load full history
+  const [nwHistory, setNwHistory] = useState(() => loadNWHistory())
+  useEffect(() => {
+    if (!loading && !isNaN(netWorth)) {
+      saveNWSnapshot(netWorth)
+      setNwHistory(loadNWHistory())
+    }
+  }, [loading, netWorth])
+
   // Dividend goal from profile (re-read on focus in case user updated profile)
   const [divTarget, setDivTarget] = useState(() => loadDivTarget())
   useEffect(() => {
@@ -357,6 +389,41 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* ── Net Worth history chart ── */}
+        {nwHistory.length >= 2 && (
+          <div className="border-t border-border/40 pt-4 mt-2">
+            <p className="text-[10px] text-slate-300 uppercase tracking-widest font-bold mb-3">Net Worth History</p>
+            <ResponsiveContainer width="100%" height={120}>
+              <AreaChart data={nwHistory} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="nwGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#22c55e" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--color-muted)' }} tickLine={false} axisLine={false}
+                  tickFormatter={d => { const [,m,day] = d.split('-'); return `${m}/${day}` }}
+                  interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 9, fill: 'var(--color-muted)' }} tickLine={false} axisLine={false}
+                  tickFormatter={v => v >= 1_000_000 ? `$${(v/1_000_000).toFixed(1)}M` : v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v}`}
+                  width={52} />
+                <Tooltip
+                  contentStyle={{ background: 'var(--color-panel)', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 11 }}
+                  formatter={v => [`$${v.toLocaleString()}`, 'Net Worth']}
+                  labelFormatter={d => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                />
+                <Area type="monotone" dataKey="value" stroke="#22c55e" strokeWidth={1.5} fill="url(#nwGrad)" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+            <p className="text-[10px] text-muted mt-1">{nwHistory.length} daily snapshot{nwHistory.length !== 1 ? 's' : ''} · updates each time you visit</p>
+          </div>
+        )}
+        {nwHistory.length < 2 && !loading && (
+          <p className="text-[10px] text-muted border-t border-border/40 pt-3 mt-2">
+            Net worth history will appear here after you visit on multiple days.
+          </p>
+        )}
       </div>
 
       {/* ── Dividend Income banner ────────────────────────────────── */}

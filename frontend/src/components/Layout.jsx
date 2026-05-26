@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { BarChart2, Bell, Landmark, Home, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon, Wallet, TrendingUp, Calculator, Milestone, CreditCard, UserCircle2, Pencil, Check, X, Flame } from 'lucide-react'
 import { useAlertNotifications } from '../hooks/useAlertNotifications'
+import { useMilestoneNotifications } from '../hooks/useMilestoneNotifications'
 import ToastContainer from './ToastContainer'
 
 const LS_PROFILE = 'user_profile'
@@ -11,7 +12,20 @@ function loadProfile() {
 }
 
 export default function Layout() {
-  const { toasts, dismiss } = useAlertNotifications()
+  const { toasts: alertToasts, dismiss: dismissAlert } = useAlertNotifications()
+  const [milestoneToasts, setMilestoneToasts] = useState([])
+
+  const addMilestoneToast = (toast) => {
+    setMilestoneToasts(prev => [...prev, toast])
+    setTimeout(() => setMilestoneToasts(prev => prev.filter(t => t.id !== toast.id)), 10_000)
+  }
+  useMilestoneNotifications(addMilestoneToast)
+
+  const toasts  = [...alertToasts, ...milestoneToasts]
+  const dismiss = (id) => {
+    dismissAlert(id)
+    setMilestoneToasts(prev => prev.filter(t => t.id !== id))
+  }
 
   const [light, setLight] = useState(() => {
     const saved = localStorage.getItem('theme') === 'light'

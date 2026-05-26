@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { api } from '../api'
 import {
   Plus, Pencil, Trash2, Check, X, ChevronDown, ChevronRight,
-  Landmark, Loader2, AlertCircle,
+  Landmark, Loader2, AlertCircle, TrendingUp,
 } from 'lucide-react'
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
@@ -562,6 +562,25 @@ export default function RetirementPage() {
     setDivSnapshots(prev => ({ ...prev, [sym]: data }))
   }, [])
 
+  /* ── Profile-based projections ── */
+  const profile = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('user_profile') ?? 'null') ?? {} } catch { return {} }
+  }, [])
+
+  const currentAge = parseInt(profile.age)     || null
+  const retireAge  = parseInt(profile.retireAge) || null
+  const yearsToRetirement = (currentAge && retireAge && retireAge > currentAge)
+    ? retireAge - currentAge : null
+
+  // Project each account at retirement using compound growth (default 7% nominal)
+  const GROWTH_RATE      = 0.07
+  const projectedTotal   = yearsToRetirement != null
+    ? accounts.reduce((s, a) => s + (a.value ?? 0) * Math.pow(1 + GROWTH_RATE, yearsToRetirement), 0)
+    : null
+  // Monthly income from retirement accounts at 4% SWR
+  const withdrawRate     = parseFloat(profile.withdrawRate) || 4
+  const projectedMonthly = projectedTotal != null ? (projectedTotal * (withdrawRate / 100)) / 12 : null
+
   return (
     <div className="space-y-5">
 
@@ -594,6 +613,63 @@ export default function RetirementPage() {
           </div>
         )}
       </div>
+
+      {/* ── Retirement projection banner ── */}
+      {!loading && accounts.length > 0 && projectedTotal != null && (
+        <div className="card border border-accent/20 bg-accent/[0.04]">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp size={13} className="text-accent" />
+            <p className="text-xs font-medium text-slate-300">
+              Projected at Retirement — Age {retireAge} ({yearsToRetirement} yrs · {GROWTH_RATE * 100}% annual growth)
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-x-8 gap-y-3">
+            <div>
+              <p className="text-[10px] text-muted uppercase tracking-widest mb-0.5">Projected Balance</p>
+              <p className="mono text-2xl font-bold text-accent leading-none">{usd(projectedTotal)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted uppercase tracking-widest mb-0.5">Monthly Income ({withdrawRate}% SWR)</p>
+              <p className="mono text-2xl font-bold text-emerald-400 leading-none">{usd(projectedMonthly)}/mo</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted uppercase tracking-widest mb-0.5">Annual Income</p>
+              <p className="mono text-2xl font-bold text-slate-200 leading-none">{usd(projectedMonthly * 12)}/yr</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted uppercase tracking-widest mb-0.5">Current Total</p>
+              <p className="mono text-2xl font-bold text-muted leading-none">{usd(total)}</p>
+            </div>
+          </div>
+          {accounts.length > 0 && (
+            <div className="mt-3 space-y-1.5 border-t border-border/40 pt-3">
+              {accounts.map(a => {
+                const proj = (a.value ?? 0) * Math.pow(1 + GROWTH_RATE, yearsToRetirement)
+                return (
+                  <div key={a.id} className="flex items-center justify-between text-xs">
+                    <span className="text-muted">{a.name}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="mono text-muted">{usd(a.value)}</span>
+                      <span className="text-muted/40">→</span>
+                      <span className="mono text-accent font-medium">{usd(proj)}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <p className="text-[10px] text-muted mt-2">
+            Assumes {GROWTH_RATE * 100}% nominal annual growth, no additional contributions. Set your age and retirement age in Profile to update this projection.
+          </p>
+        </div>
+      )}
+
+      {!loading && accounts.length > 0 && projectedTotal == null && (
+        <div className="card border border-border/40 bg-white/[0.01] flex items-start gap-2 py-3">
+          <TrendingUp size={13} className="text-muted shrink-0 mt-0.5" />
+          <p className="text-xs text-muted">Set your <strong className="text-slate-300">Current Age</strong> and <strong className="text-slate-300">Desired Retirement Age</strong> in the Profile sidebar to see projected account values at retirement.</p>
+        </div>
+      )}
 
       {error && (
         <div className="text-rose-400 text-sm px-3 py-2 rounded-lg border border-rose-400/20 bg-rose-400/5">

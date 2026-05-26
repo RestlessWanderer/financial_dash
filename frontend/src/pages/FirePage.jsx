@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import {
-  CheckCircle2, Circle, ChevronRight, Flame, PartyPopper,
-  AlertTriangle, Lightbulb, ArrowRight,
+  CheckCircle2, Circle, Flame, PartyPopper,
+  AlertTriangle, Lightbulb, ArrowRight, TrendingUp,
 } from 'lucide-react'
 
 /* ── Constants ────────────────────────────────────────────────────── */
@@ -284,6 +285,37 @@ export default function FirePage() {
 
   // Retirement draw gap
   const hasBridgeGap = bridgeYears != null && bridgeYears > 0
+
+  // ── Projected FIRE date ──────────────────────────────────────────
+  // We project forward month by month: liquid savings grows at monthlySurplus,
+  // dividends grow at divGoal growth rate. FIRE is reached when:
+  //   (a) bridge capital is funded (liquidTotal >= bridgeCapital), AND
+  //   (b) all loans/mortgage are cleared (simplified: assume current state)
+  // We also compute a net worth trend line (liquid + div income capitalised)
+  const { projectedFireYear, projectedFireAge, netWorthTrend } = useMemo(() => {
+    if (!age || !bridgeCapital || monthlySurplus <= 0) {
+      return { projectedFireYear: null, projectedFireAge: null, netWorthTrend: [] }
+    }
+    const currentYear = new Date().getFullYear()
+    const MAX_YEARS   = 50
+    const trend       = []
+    let savings       = liquidTotal
+    let divIncome     = projectedDivIncome
+    let fireYear      = null
+    let fireAge       = null
+
+    for (let y = 0; y <= MAX_YEARS; y++) {
+      const yr       = currentYear + y
+      const ageAtYr  = age + y
+      const isFired  = savings >= bridgeCapital || divIncome >= annualExpenses
+      if (isFired && fireYear == null) { fireYear = yr; fireAge = ageAtYr }
+      trend.push({ year: yr, savings: Math.round(savings), divIncome: Math.round(divIncome), fired: isFired })
+      // Grow: add 12 months of surplus to savings, grow div income 5%/yr
+      savings   += monthlySurplus * 12
+      divIncome *= 1.05
+    }
+    return { projectedFireYear: fireYear, projectedFireAge: fireAge, netWorthTrend: trend }
+  }, [age, bridgeCapital, monthlySurplus, liquidTotal, projectedDivIncome, annualExpenses])
 
   /* ── Step definitions ───────────────────────────────────────────── */
   const steps = useMemo(() => [
@@ -575,6 +607,100 @@ export default function FirePage() {
           </div>
         )}
       </div>
+
+      {/* ── Projected FIRE summary card ── */}
+      {age && bridgeCapital != null && (
+        <div className="card border border-accent/20 bg-accent/[0.04] space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] text-muted uppercase tracking-widest flex items-center gap-1.5 mb-1">
+                <TrendingUp size={11} /> Projected FIRE Date
+              </p>
+              {projectedFireYear ? (
+                <>
+                  <p className="mono text-4xl font-bold text-accent leading-none">{projectedFireYear}</p>
+                  <p className="text-xs text-muted mt-1">
+                    Age <strong className="text-slate-200">{projectedFireAge}</strong> ·{' '}
+                    {projectedFireYear - new Date().getFullYear()} years away
+                    {retireAge && projectedFireAge <= retireAge
+                      ? <span className="text-emerald-400 ml-2">✓ On track for desired retirement age</span>
+                      : retireAge
+                      ? <span className="text-amber-400 ml-2">⚠ {projectedFireAge - retireAge} yrs after desired retirement age</span>
+                      : null
+                    }
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted mt-1">
+                  {monthlySurplus <= 0
+                    ? 'No monthly surplus — complete steps 1–3 to free up cash flow'
+                    : 'Not enough data — set your profile details to project a date'}
+                </p>
+              )}
+            </div>
+            {projectedFireYear && (
+              <div className="grid grid-cols-2 gap-3 shrink-0 text-right">
+                <div>
+                  <p className="text-[10px] text-muted uppercase tracking-widest">Bridge Target</p>
+                  <p className="mono text-sm font-bold text-slate-200">{usd(bridgeCapital)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted uppercase tracking-widest">Monthly Surplus</p>
+                  <p className={`mono text-sm font-bold ${monthlySurplus >= 0 ? 'text-slate-200' : 'text-rose-400'}`}>
+                    {monthlySurplus >= 0 ? '+' : '−'}{usd(Math.abs(monthlySurplus))}/mo
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted uppercase tracking-widest">Liquid Savings</p>
+                  <p className="mono text-sm font-bold text-slate-200">{usd(liquidTotal)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted uppercase tracking-widest">Div. Income</p>
+                  <p className="mono text-sm font-bold text-emerald-400">{usd(projectedDivIncome)}/yr</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Trend chart */}
+          {netWorthTrend.length > 1 && (
+            <div>
+              <p className="text-[10px] text-muted uppercase tracking-widest mb-2">Savings & Dividend Income Trajectory</p>
+              <ResponsiveContainer width="100%" height={160}>
+                <AreaChart data={netWorthTrend} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="savingsGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="var(--color-accent)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="divGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#34d399" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="year" tick={{ fontSize: 9, fill: 'var(--color-muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 9, fill: 'var(--color-muted)' }} tickLine={false} axisLine={false}
+                    tickFormatter={v => v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v}`} width={48} />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--color-panel)', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 11 }}
+                    formatter={(v, name) => [`$${v.toLocaleString()}`, name === 'savings' ? 'Liquid Savings' : 'Div. Income/yr']}
+                    labelFormatter={l => `Year ${l}`}
+                  />
+                  {projectedFireYear && (
+                    <ReferenceLine x={projectedFireYear} stroke="var(--color-accent)" strokeDasharray="4 2" label={{ value: 'FIRE', fontSize: 9, fill: 'var(--color-accent)', position: 'top' }} />
+                  )}
+                  <Area type="monotone" dataKey="savings"   stroke="var(--color-accent)" strokeWidth={1.5} fill="url(#savingsGrad)" dot={false} />
+                  <Area type="monotone" dataKey="divIncome" stroke="#34d399"              strokeWidth={1.5} fill="url(#divGrad)"    dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+              <div className="flex items-center gap-4 mt-1 justify-end">
+                <span className="flex items-center gap-1 text-[9px] text-muted"><span className="w-3 h-0.5 bg-accent inline-block rounded" /> Liquid Savings</span>
+                <span className="flex items-center gap-1 text-[9px] text-muted"><span className="w-3 h-0.5 bg-emerald-400 inline-block rounded" /> Dividend Income</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Profile incomplete warning ── */}
       {(!age || !retireAge) && (

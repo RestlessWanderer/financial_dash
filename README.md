@@ -1,6 +1,6 @@
-# Financial Wellness
+# Financial Journey
 
-A locally-run personal finance + stock monitoring web app. Track your net worth, plan mortgage payoff, model dividend income, and monitor stock alerts — all from a single dashboard running entirely on your laptop via Docker.
+A locally-run personal finance + stock monitoring web app. Track your net worth, plan your path to FIRE, model dividend income, monitor mortgage payoff, manage your budget, and watch stock alerts — all from a single dashboard running entirely on your laptop via Docker.
 
 ---
 
@@ -45,24 +45,27 @@ financial_dash/
 │       ├── index.css                   # Global styles + Tailwind + theme variables
 │       ├── api.js                      # All fetch calls to /api/*
 │       ├── components/
-│       │   ├── Layout.jsx              # Sidebar nav + light/dark toggle
+│       │   ├── Layout.jsx              # Sidebar nav + profile panel + light/dark toggle
 │       │   ├── RuleBuilder.jsx         # Visual AND/OR condition block editor
-│       │   └── ToastContainer.jsx      # Fixed bottom-right toast stack
+│       │   └── ToastContainer.jsx      # Fixed bottom-right toast stack (alerts + milestones)
 │       ├── hooks/
-│       │   └── useAlertNotifications.js  # Polls /alerts/pending every 30s
+│       │   ├── useAlertNotifications.js       # Polls /alerts/pending every 30s
+│       │   └── useMilestoneNotifications.js   # Fires once-per-milestone financial toasts
 │       └── pages/
-│           ├── DashboardPage.jsx       # Net worth summary + section cards
+│           ├── DashboardPage.jsx       # Net worth summary + history chart + section cards
 │           ├── Dashboard.jsx           # Stock watchlist: charts + indicators
 │           ├── AlertsPage.jsx          # Alert rules + history log
-│           ├── RetirementPage.jsx      # Retirement accounts + per-account dividend portfolios
+│           ├── RetirementPage.jsx      # Retirement accounts + projected values at retirement
 │           ├── WorkStockPage.jsx       # ESPP/RSU plans + E*TRADE integration
 │           ├── BrokeragePage.jsx       # Taxable/crypto/HSA brokerage accounts
 │           ├── AssetsPage.jsx          # Physical assets with value + debt tracking
 │           ├── LiquidAssetsPage.jsx    # Liquid accounts + inflation analysis
 │           ├── MortgagePage.jsx        # Amortization + extra payments + target payoff years
-│           ├── BudgetPage.jsx          # Monthly income/expense budget with remaining calc
+│           ├── LoansPage.jsx           # Loan tracker with total interest calculations
+│           ├── BudgetPage.jsx          # Monthly income/expense budget + NE savings impact
 │           ├── PayoffVsInvestPage.jsx  # Mortgage payoff vs. invest split calculator
-│           └── DividendPage.jsx        # Dividend income portfolio tracker
+│           ├── DividendPage.jsx        # Dividend income portfolio tracker + milestone cards
+│           └── FirePage.jsx            # FIRE Journey: 4-step roadmap + projected FIRE date
 ├── .env.example                        # Environment variable template
 ├── .gitignore
 ├── CLAUDE.md                           # Project context for Claude Code
@@ -133,11 +136,25 @@ make start
 
 ---
 
+## Profile
+
+Click the **Profile** button above the theme toggle in the sidebar to set:
+
+- **Current Age** — used for FIRE and retirement projections
+- **Desired Retirement Age** — drives the FIRE journey and bridge capital calculation
+- **Yearly Dividend Goal** — sets the target for the Dividend Income planner (default $100K/yr)
+- **Withdrawal Rate (%)** — safe withdrawal rate used in retirement and FIRE calculations (default 4%)
+
+---
+
 ## Pages
 
 ### Dashboard (`/`)
 
-The main overview page. Shows a **Net Worth hero card** with a full breakdown of every asset and liability, plus section cards linking to each area of the app. Cards display key metrics at a glance — balances, equity, projected income, and dividend totals.
+The main overview page. Shows:
+- **Net Worth hero card** — full breakdown of every asset and liability with mini grid cards, plus a **daily net worth history chart** that builds over time as you visit
+- **Dividend Income banner** — projected annual income, progress bar, and milestone chips toward your goal
+- **Section cards** — quick links to Retirement, Work Stock, Brokerage, Physical Assets, Liquid Assets, Mortgage, and Loans with key metrics at a glance
 
 ---
 
@@ -163,10 +180,9 @@ The main overview page. Shows a **Net Worth hero card** with a full breakdown of
 
 - Full-width expandable account banners — click to reveal the dividend portfolio for that account
 - Track 401(k), IRA, Roth, and any other retirement balances manually
+- **Projected values at retirement** — based on your profile age/retirement age, projects each account at 7% annual growth and shows estimated monthly income at your chosen withdrawal rate
 - **Per-account dividend portfolio:** add tickers to each account, enter shares owned, see annual dividend income per account
-- Retirement dividend holdings are **isolated** from the main Dividend page — adding a ticker here does not affect the dividend portfolio tracker
 - Header shows **Total Balance** + **Retirement Dividend Income/yr** when income is configured
-- Dashboard Retirement card also reflects the retirement dividend income total
 
 ### Work Stock Plans (`/workstock`)
 
@@ -177,61 +193,90 @@ The main overview page. Shows a **Net Worth hero card** with a full breakdown of
 
 - Manually track taxable brokerage, crypto, HSA, and other investment accounts
 - Account type badges: Taxable, Crypto, HSA, Other
-- Optional notes field per account
 
 ### Physical Assets (`/assets`)
 
 - Track owned physical assets (vehicles, property, collectibles, etc.) with current value and any outstanding debt
-- Per-card equity calculation (value − debt) shown in green/red
+- Per-row equity calculation (value − debt) shown in green/red
 - Header totals: Total Value, Total Debt, Net Equity
 
 ### Liquid Assets (`/liquid`)
 
 - Track checking, savings, HYSA, money market, CD, and other liquid accounts
 - Optional APY field per account
-- **Inflation Impact Summary** — shows purchasing power erosion, real return after inflation, and opportunity cost vs. investing, with 1 Year / 5 Years / 10 Years horizon toggle
-- **Purchasing Power** section — shows how far your balance goes today vs. projected future for common consumer staples (eggs, milk, bread, gas, etc.) using live BLS retail price data, with the same horizon toggle
+- **Inflation Impact Summary** — purchasing power erosion, real return after inflation, and opportunity cost vs. investing
+- **Purchasing Power** section — live BLS retail price data showing how far your balance goes today vs. future projections for common consumer staples
 
 ---
+
+### Loans (`/loans`)
+
+- Track any non-mortgage loans with name, interest type (fixed amortizing or simple), amount, term, and rate
+- Calculates total interest paid over the life of each loan
+- Header totals: Total Principal, Total Interest, Total Cost
+- Loan interest is included as a liability drag in the Dashboard net worth calculation
 
 ### Mortgage (`/mortgage`)
 
 - Enter loan start date, term, interest rate, and principal
 - Displays monthly payment, standard payoff date, and total interest
 - **Amortization chart** — standard payoff (grey) vs. accelerated payoff (green)
-- **Amortization schedule** — expandable year → month rows with per-month extra payment fields
-- **Two Target Payoff Year fields** — calculates the flat extra payment needed to hit each target year and the total interest savings; one-click to apply that extra to the schedule
-- All data persists in `localStorage` instantly on every field change — survives navigation and page reloads
+- **Two Target Payoff Year fields** — calculates the flat extra payment needed to hit each target and total interest savings; one-click to apply
+- All data persists in `localStorage`
 
 ### Budget (`/budget`)
 
-- Year-grouped expandable table spanning the same horizon as your mortgage target payoff years
-- Per-month rows: **Paycheck**, **Housing**, **Utilities**, **Groceries**, plus up to 10 user-defined custom expense categories
-- **Remaining** = paycheck − all expenses; shown in green when positive, red when negative
-- Year header rows show annual paycheck total and annual remaining at a glance
-- Custom category chips at the top — click to rename, hover to remove; fixed categories cannot be removed
-- The **Remaining** amount for each month feeds directly into the Payoff vs. Invest planner as the default monthly budget
+- Year-grouped expandable table: **Pay 1**, **Pay 2**, Housing, Utilities, Groceries, plus up to 10 custom expense categories
+- **Remaining** = income − all expenses; feeds into the Payoff vs. Invest planner
+- **NE (Non-Essential) flags** — mark custom categories as non-essential; a "What if you cut these?" card shows how many years faster your FIRE bridge capital would be funded
+- Custom category chips at the top — click to rename, hover to remove
 - All data saved to `localStorage` automatically
 
 ### Payoff vs. Invest (`/strategy`)
 
-- Models the optimal split of a monthly budget between extra mortgage principal and investing, based on your tax situation
+- Models the optimal split of a monthly budget between extra mortgage principal and investing
 - Input: filing status, state, gross income, expected investment return
-- Calculates effective after-tax mortgage rate vs. after-tax investment return and suggests an optimal split
-- **Monthly budget auto-loaded from the Budget page** — the remaining balance for each month is used automatically; no separate default input needed
-- **Monthly Planner table** — year-grouped expandable rows spanning today through your longest target payoff year
-  - Override budget for any individual month directly in the table (takes priority over Budget page)
-  - Two target-year column pairs: shows minimum mortgage payment needed to stay on pace, with surplus redirected to investing
-  - **Carry-forward deficit logic** — if a month's budget falls short, the deficit rolls forward to the next available month
+- **Monthly budget auto-loaded from the Budget page**
+- **Monthly Planner table** — year-grouped with carry-forward deficit logic
 
 ### Dividends (`/dividends`)
 
 - Screens ~120 dividend-paying stocks and ETFs (yields ≥ 5%) from Yahoo Finance
-- Ranks by dividend-to-cost ratio
-- **Goal:** $100,000/yr in passive income, with milestone tracking at $25K / $50K / $75K / $100K
-- Enter shares owned for any ticker; projected annual and monthly income update instantly
-- Add custom tickers not in the screened universe
+- **Goal** set from your Profile (default $100K/yr) — milestone step cards at goal/4 intervals
+- **Income Goal Progress** bar, **Portfolio info card**, **Milestone step cards** (with mini progress bars), **Add a ticker**, **Portfolio breakdown** table
+- Add custom tickers; enter shares owned to update projected income instantly
 - Holdings persist to the database
+- Warns if you try to add a ticker already in the screened portfolio
+
+### FIRE Journey (`/fire`)
+
+Your step-by-step path to **Financial Independence, Early Retirement**:
+
+1. **Eliminate Non-Essential Spending** — lists NE-flagged budget categories and monthly cost
+2. **Pay Off All Loans** — shows each loan with principal and total interest cost
+3. **Pay Off Your Mortgage** — remaining balance progress bar
+4. **Fund Bridge Capital** — calculates the lump-sum needed to cover expenses between your desired retirement age and penalty-free retirement account access (age 59.5):
+   - **Path A (Passive):** dividend income coverage of essential expenses
+   - **Path B (Active):** monthly surplus savings rate with on-track indicator
+
+**Projected FIRE Date card** — projects forward year by year based on your current savings rate and dividend growth (5%/yr), finds the first year you're FIRE-ready, and charts the trajectory.
+
+Each step auto-detects completion from your data, with manual override available. Progress is persisted to `localStorage`.
+
+---
+
+## Milestone Notifications
+
+The app automatically detects and notifies you (in-app toast + optional browser notification) the first time you cross each of these milestones:
+
+- Loans fully cleared
+- Loan nearly paid off (< 10% interest remaining)
+- Mortgage 25% / 50% / 75% / 100% paid
+- Net worth $10K / $25K / $50K / $100K / $250K / $500K / $1M
+- All non-essential spending eliminated
+- FIRE profile complete (age + retirement age + dividend goal all set)
+
+Each milestone fires exactly once and is remembered in `localStorage`.
 
 ---
 
@@ -262,10 +307,10 @@ Boolean flags (`mmbm_signal`, `mmsm_signal`) are `1` when active — use `>= 1` 
 ## Notifications
 
 ### Browser pop-up (always on)
-The frontend polls the backend every 30 seconds. When an alert fires, a toast appears in the bottom-right corner. If you grant browser notification permission, a native OS notification also fires — even if the tab is in the background.
+The frontend polls the backend every 30 seconds. When a stock alert fires, a toast appears in the bottom-right corner. If you grant browser notification permission, a native OS notification also fires — even if the tab is in the background. Financial milestone notifications work the same way.
 
 ### Email (optional)
-Fill in the `SMTP_*` variables in `.env`. The backend sends a plain-text email on every trigger using Python's built-in `smtplib`. Works with any SMTP provider (Gmail, Outlook, Fastmail, iCloud Mail, etc.).
+Fill in the `SMTP_*` variables in `.env`. The backend sends a plain-text email on every stock alert trigger using Python's built-in `smtplib`.
 
 ---
 
@@ -278,8 +323,11 @@ Fill in the `SMTP_*` variables in `.env`. The backend sends a plain-text email o
 | Retirement, work stock, brokerage, physical assets, liquid accounts | Same SQLite database | ✅ Yes |
 | Retirement dividend holdings (per-account) | Browser `localStorage` | ✅ Yes (browser only) |
 | Mortgage details, extra payments, target payoff years | Browser `localStorage` | ✅ Yes (browser only) |
-| Payoff vs. Invest profile + monthly overrides | Browser `localStorage` | ✅ Yes (browser only) |
-| Budget income/expense data + custom category labels | Browser `localStorage` | ✅ Yes (browser only) |
+| Loans | Browser `localStorage` | ✅ Yes (browser only) |
+| Budget income/expense data + custom categories + NE flags | Browser `localStorage` | ✅ Yes (browser only) |
+| User profile (age, retirement age, dividend goal, withdrawal rate) | Browser `localStorage` | ✅ Yes (browser only) |
+| Net worth history snapshots | Browser `localStorage` | ✅ Yes (browser only) |
+| FIRE step overrides + milestone seen flags | Browser `localStorage` | ✅ Yes (browser only) |
 | Light/dark theme preference | Browser `localStorage` | ✅ Yes (browser only) |
 
 `make clean` is the only command that wipes the SQLite database — it prompts before doing so. `localStorage` data is browser-local and never committed to git. Nothing sensitive is ever stored in the repository.
