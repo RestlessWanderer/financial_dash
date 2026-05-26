@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
-import { BarChart2, Bell, Landmark, Home, Stethoscope, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon, Wallet, TrendingUp } from 'lucide-react'
+import { BarChart2, Bell, Landmark, Home, Stethoscope, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon, Wallet, TrendingUp, Calculator } from 'lucide-react'
 import { useAlertNotifications } from '../hooks/useAlertNotifications'
 import ToastContainer from './ToastContainer'
 
@@ -68,9 +68,10 @@ export default function Layout() {
           {nav('/liquid',     Wallet,     'Liquid Assets')}
 
           <p className="text-[10px] text-muted uppercase tracking-widest px-3 pt-3 pb-1">Planning</p>
-          {nav('/mortgage',  Home,     'Mortgage')}
-          {nav('/strategy',  Scale,    'Payoff vs. Invest')}
-          {nav('/dividends', Landmark, 'Dividends')}
+          {nav('/mortgage',  Home,       'Mortgage')}
+          {nav('/budget',    Calculator, 'Budget')}
+          {nav('/strategy',  Scale,      'Payoff vs. Invest')}
+          {nav('/dividends', Landmark,   'Dividends')}
         </nav>
 
         {/* ── Theme toggle ──────────────────────────────────────── */}

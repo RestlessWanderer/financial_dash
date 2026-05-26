@@ -14,6 +14,7 @@ import WorkStockPage from './pages/WorkStockPage'
 import AssetsPage from './pages/AssetsPage'
 import LiquidAssetsPage from './pages/LiquidAssetsPage'
 import BrokeragePage from './pages/BrokeragePage'
+import BudgetPage from './pages/BudgetPage'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -26,6 +27,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="dividends" element={<DividendPage />} />
           <Route path="mortgage" element={<MortgagePage />} />
           <Route path="strategy" element={<PayoffVsInvestPage />} />
+          <Route path="budget"   element={<BudgetPage />} />
           <Route path="retirement" element={<RetirementPage />} />
           <Route path="workstock" element={<WorkStockPage />} />
           <Route path="assets" element={<AssetsPage />} />

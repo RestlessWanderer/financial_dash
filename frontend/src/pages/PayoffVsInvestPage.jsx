@@ -299,28 +299,31 @@ export default function PayoffVsInvestPage() {
     grossIncome:  '',
     expectedReturn: '7',
   })
-  const [defaultBudget,  setDefaultBudget]  = useState('')
   const [monthBudgets,   setMonthBudgets]   = useState({})
   const [customSplit,    setCustomSplit]     = useState(null)
   const [mortgageConfig, setMortgageConfig] = useState(null)
   const [mortgageExtras, setMortgageExtras] = useState(null)
   const [expanded,       setExpanded]       = useState(new Set())
+  const [budgetData,     setBudgetData]     = useState({})  // from Budget page
+  const [budgetLabels,   setBudgetLabels]   = useState([])  // custom label names
 
   // Load from localStorage
   useEffect(() => {
     try {
       const p   = localStorage.getItem('payoff_vs_invest_profile')
-      const b   = localStorage.getItem('payoff_vs_invest_budget')
       const mb  = localStorage.getItem('payoff_vs_invest_month_budgets')
       const cs  = localStorage.getItem('payoff_vs_invest_split')
       const cfg = localStorage.getItem('mortgage_config')
       const ext = localStorage.getItem('mortgage_extras')
+      const bd  = localStorage.getItem('budget_data')
+      const bl  = localStorage.getItem('budget_custom_labels')
       if (p)   setProfile(JSON.parse(p))
-      if (b)   setDefaultBudget(b)
       if (mb)  setMonthBudgets(JSON.parse(mb))
       if (cs)  setCustomSplit(parseFloat(cs))
       if (cfg) setMortgageConfig(JSON.parse(cfg))
       if (ext) setMortgageExtras(JSON.parse(ext))
+      if (bd)  setBudgetData(JSON.parse(bd))
+      if (bl)  setBudgetLabels(JSON.parse(bl))
     } catch { /* ignore */ }
   }, [])
 
@@ -330,11 +333,6 @@ export default function PayoffVsInvestPage() {
       localStorage.setItem('payoff_vs_invest_profile', JSON.stringify(next))
       return next
     })
-  }
-
-  const updateDefaultBudget = (val) => {
-    setDefaultBudget(val)
-    localStorage.setItem('payoff_vs_invest_budget', val)
   }
 
   const updateMonthBudget = (ym, val) => {
@@ -356,14 +354,30 @@ export default function PayoffVsInvestPage() {
   const clearAll = () => {
     const defaults = { filingStatus: 'single', state: 'TX', grossIncome: '', expectedReturn: '7' }
     setProfile(defaults)
-    setDefaultBudget('')
     setMonthBudgets({})
     setCustomSplit(null)
     localStorage.removeItem('payoff_vs_invest_profile')
-    localStorage.removeItem('payoff_vs_invest_budget')
     localStorage.removeItem('payoff_vs_invest_month_budgets')
     localStorage.removeItem('payoff_vs_invest_split')
   }
+
+  /** Compute the remaining budget for a month from the Budget page data */
+  const getMonthBudget = useCallback((ym) => {
+    // Per-month override in this page takes priority
+    if (monthBudgets[ym] !== undefined && monthBudgets[ym] !== '') {
+      return parseFloat(monthBudgets[ym]) || 0
+    }
+    // Fall back to Budget page remaining for that month
+    const row       = budgetData[ym] ?? {}
+    const paycheck  = parseFloat(row.paycheck)  || 0
+    const housing   = parseFloat(row.housing)   || 0
+    const utilities = parseFloat(row.utilities) || 0
+    const groceries = parseFloat(row.groceries) || 0
+    const customSum = budgetLabels.reduce((s, _, i) =>
+      s + (parseFloat(row[`custom_${i}`]) || 0), 0)
+    const remaining = paycheck - housing - utilities - groceries - customSum
+    return paycheck > 0 ? Math.max(0, remaining) : 0
+  }, [monthBudgets, budgetData, budgetLabels])
 
   const toggleYear = useCallback((year) => {
     setExpanded(prev => {
@@ -423,12 +437,12 @@ export default function PayoffVsInvestPage() {
       let carry = 0
       tp1 = {}
       for (const ym of MONTHS) {
-        const budget = parseFloat(monthBudgets[ym] || defaultBudget) || 0
+        const budget = getMonthBudget(ym)
         const needed = Math.round(target1.requiredExtra + carry)
         let mortgagePaid, invest, newCarry
-        if (budget <= 0)         { mortgagePaid = 0;      invest = 0;            newCarry = needed }
-        else if (budget >= needed) { mortgagePaid = needed; invest = budget - needed; newCarry = 0 }
-        else                     { mortgagePaid = budget; invest = 0;            newCarry = needed - budget }
+        if (budget <= 0)           { mortgagePaid = 0;      invest = 0;               newCarry = needed }
+        else if (budget >= needed) { mortgagePaid = needed; invest = budget - needed;  newCarry = 0 }
+        else                       { mortgagePaid = budget; invest = 0;               newCarry = needed - budget }
         tp1[ym] = { mortgagePaid, invest, carryIn: carry, carryOut: newCarry }
         carry = newCarry
       }
@@ -437,19 +451,19 @@ export default function PayoffVsInvestPage() {
       let carry = 0
       tp2 = {}
       for (const ym of MONTHS) {
-        const budget = parseFloat(monthBudgets[ym] || defaultBudget) || 0
+        const budget = getMonthBudget(ym)
         const needed = Math.round(target2.requiredExtra + carry)
         let mortgagePaid, invest, newCarry
-        if (budget <= 0)         { mortgagePaid = 0;      invest = 0;            newCarry = needed }
-        else if (budget >= needed) { mortgagePaid = needed; invest = budget - needed; newCarry = 0 }
-        else                     { mortgagePaid = budget; invest = 0;            newCarry = needed - budget }
+        if (budget <= 0)           { mortgagePaid = 0;      invest = 0;               newCarry = needed }
+        else if (budget >= needed) { mortgagePaid = needed; invest = budget - needed;  newCarry = 0 }
+        else                       { mortgagePaid = budget; invest = 0;               newCarry = needed - budget }
         tp2[ym] = { mortgagePaid, invest, carryIn: carry, carryOut: newCarry }
         carry = newCarry
       }
     }
 
     return MONTHS.map(ym => {
-      const budget      = parseFloat(monthBudgets[ym] || defaultBudget) || 0
+      const budget      = getMonthBudget(ym)
       const stdMortgage = Math.round(budget * mortgageFrac)
       const stdInvest   = budget - stdMortgage
       const r1 = tp1?.[ym] ?? null
@@ -457,7 +471,7 @@ export default function PayoffVsInvestPage() {
       return {
         ym,
         budget,
-        hasOverride: (ym in monthBudgets) && monthBudgets[ym] !== '',
+        hasOverride: ym in monthBudgets && monthBudgets[ym] !== '',
         stdMortgage,
         stdInvest,
         m1: r1?.mortgagePaid ?? null,
@@ -472,7 +486,7 @@ export default function PayoffVsInvestPage() {
         deficit2:  r2 ? r2.carryIn > 0 : false,
       }
     })
-  }, [MONTHS, monthBudgets, defaultBudget, mortgageFrac, target1, target2])
+  }, [MONTHS, getMonthBudget, mortgageFrac, target1, target2])
 
   /* Year-grouped view */
   const yearGroups = useMemo(() => groupPlanByYear(allRows), [allRows])
@@ -762,18 +776,14 @@ export default function PayoffVsInvestPage() {
               </p>
             </div>
 
-            {/* Default budget input */}
-            <div className="shrink-0 space-y-1">
-              <label className="text-[10px] text-muted uppercase tracking-wider">Default Monthly Budget</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none">$</span>
-                <input type="number" min="0" step="50"
-                  value={defaultBudget}
-                  onChange={e => updateDefaultBudget(e.target.value)}
-                  placeholder="500"
-                  className="w-36 bg-surface border border-border rounded-md pl-6 pr-3 py-1.5 text-sm focus:outline-none focus:border-accent transition-colors"
-                />
-              </div>
+            {/* Budget sourced from Budget page */}
+            <div className="shrink-0">
+              <p className="text-[10px] text-muted uppercase tracking-wider mb-1">Monthly Budget</p>
+              <p className="text-xs text-muted">
+                Auto-loaded from the{' '}
+                <a href="/budget" className="text-accent underline hover:text-accent/80 transition-colors">Budget page</a>
+                {' '}· override per-month in the table below
+              </p>
             </div>
           </div>
 
