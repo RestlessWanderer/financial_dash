@@ -506,9 +506,10 @@ export default function DividendPage() {
                       </tr>
                     )}
                     {plan.rows.map((s, i) => {
-                      const owned      = getOwned(s.symbol)
-                      const sharesGoal = Math.max(0, s.targetShares - owned)
-                      const goalMet    = owned >= s.targetShares
+                      const owned         = getOwned(s.symbol)
+                      const sharesGoal    = Math.max(0, s.targetShares - owned)
+                      const goalMet       = owned >= s.targetShares
+                      const remainInvest  = sharesGoal * (s.price ?? 0)
                       return (
                         <tr key={s.symbol}
                           className="border-b border-border/40 hover:bg-white/[0.025] transition-colors">
@@ -522,10 +523,15 @@ export default function DividendPage() {
                           </td>
                           <td className="px-3 py-2.5 text-right mono text-slate-300">${(s.annual_dividend ?? 0).toFixed(2)}</td>
                           <td className="px-3 py-2.5 text-right mono">${(s.price ?? 0).toFixed(2)}</td>
-                          <td className="px-3 py-2.5 text-right mono">{usd(s.targetInvest)}</td>
                           <td className="px-3 py-2.5 text-right mono">
                             {goalMet
-                              ? <span className="text-green-400 text-xs font-medium">✓ {s.targetShares.toLocaleString()}</span>
+                              ? <span className="text-emerald-400 text-xs font-medium">✓ done</span>
+                              : usd(remainInvest)
+                            }
+                          </td>
+                          <td className="px-3 py-2.5 text-right mono">
+                            {goalMet
+                              ? <span className="text-emerald-400 text-xs font-medium">✓ {s.targetShares.toLocaleString()}</span>
                               : <span>{sharesGoal.toLocaleString()}</span>
                             }
                           </td>
