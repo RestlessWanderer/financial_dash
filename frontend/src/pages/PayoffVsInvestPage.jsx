@@ -305,6 +305,7 @@ export default function PayoffVsInvestPage() {
   const [mortgageExtras, setMortgageExtras] = useState(null)
   const [expanded,       setExpanded]       = useState(new Set())
   const [budgetData,     setBudgetData]     = useState({})  // from Budget page
+  const [budgetDefaults, setBudgetDefaults] = useState({})  // from Budget page defaults row
   const [budgetLabels,   setBudgetLabels]   = useState([])  // custom label names
 
   // Load from localStorage
@@ -316,6 +317,7 @@ export default function PayoffVsInvestPage() {
       const cfg = localStorage.getItem('mortgage_config')
       const ext = localStorage.getItem('mortgage_extras')
       const bd  = localStorage.getItem('budget_data')
+      const bdf = localStorage.getItem('budget_defaults')
       const bl  = localStorage.getItem('budget_custom_labels')
       if (p)   setProfile(JSON.parse(p))
       if (mb)  setMonthBudgets(JSON.parse(mb))
@@ -323,6 +325,7 @@ export default function PayoffVsInvestPage() {
       if (cfg) setMortgageConfig(JSON.parse(cfg))
       if (ext) setMortgageExtras(JSON.parse(ext))
       if (bd)  setBudgetData(JSON.parse(bd))
+      if (bdf) setBudgetDefaults(JSON.parse(bdf))
       if (bl)  setBudgetLabels(JSON.parse(bl))
     } catch { /* ignore */ }
   }, [])
@@ -361,23 +364,32 @@ export default function PayoffVsInvestPage() {
     localStorage.removeItem('payoff_vs_invest_split')
   }
 
+  /** Resolve effective value for a budget field — month override > default > 0 */
+  const budgetEffective = useCallback((row, key) => {
+    const v = row?.[key]
+    if (v !== undefined && v !== '') return parseFloat(v) || 0
+    const d = budgetDefaults?.[key]
+    if (d !== undefined && d !== '') return parseFloat(d) || 0
+    return 0
+  }, [budgetDefaults])
+
   /** Compute the remaining budget for a month from the Budget page data */
   const getMonthBudget = useCallback((ym) => {
     // Per-month override in this page takes priority
     if (monthBudgets[ym] !== undefined && monthBudgets[ym] !== '') {
       return parseFloat(monthBudgets[ym]) || 0
     }
-    // Fall back to Budget page remaining for that month
+    // Fall back to Budget page remaining (using effective values with defaults)
     const row       = budgetData[ym] ?? {}
-    const paycheck  = parseFloat(row.paycheck)  || 0
-    const housing   = parseFloat(row.housing)   || 0
-    const utilities = parseFloat(row.utilities) || 0
-    const groceries = parseFloat(row.groceries) || 0
+    const paycheck  = budgetEffective(row, 'paycheck')
+    const housing   = budgetEffective(row, 'housing')
+    const utilities = budgetEffective(row, 'utilities')
+    const groceries = budgetEffective(row, 'groceries')
     const customSum = budgetLabels.reduce((s, _, i) =>
-      s + (parseFloat(row[`custom_${i}`]) || 0), 0)
+      s + budgetEffective(row, `custom_${i}`), 0)
     const remaining = paycheck - housing - utilities - groceries - customSum
     return paycheck > 0 ? Math.max(0, remaining) : 0
-  }, [monthBudgets, budgetData, budgetLabels])
+  }, [monthBudgets, budgetData, budgetDefaults, budgetLabels, budgetEffective])
 
   const toggleYear = useCallback((year) => {
     setExpanded(prev => {
@@ -981,7 +993,7 @@ export default function PayoffVsInvestPage() {
                                           type="number" min="0" step="50"
                                           value={monthBudgets[r.ym] ?? ''}
                                           onChange={e => updateMonthBudget(r.ym, e.target.value)}
-                                          placeholder={defaultBudget || '—'}
+                                          placeholder="—"
                                           className="w-24 bg-surface border border-border/60 rounded px-2 py-1 text-xs mono focus:outline-none focus:border-accent transition-colors pl-5 text-right"
                                         />
                                       </div>
