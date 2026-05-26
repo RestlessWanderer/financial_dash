@@ -137,9 +137,10 @@ export default function DashboardPage() {
   const [divHoldings,setDivHoldings]= useState(null)
   const [loading,    setLoading]    = useState(true)
 
-  // Mortgage lives in localStorage (client-side only)
-  const [mortgageConfig, setMortgageConfig] = useState(null)
-  const [mortgageExtras, setMortgageExtras] = useState(null)
+  // Mortgage + retirement div holdings live in localStorage (client-side only)
+  const [mortgageConfig,   setMortgageConfig]   = useState(null)
+  const [mortgageExtras,   setMortgageExtras]   = useState(null)
+  const [retirementDivMap, setRetirementDivMap] = useState({}) // accountId → {symbol: shares}
 
   useEffect(() => {
     // Read mortgage from localStorage
@@ -148,6 +149,20 @@ export default function DashboardPage() {
       const ext = localStorage.getItem('mortgage_extras')
       if (cfg) setMortgageConfig(JSON.parse(cfg))
       if (ext) setMortgageExtras(JSON.parse(ext))
+    } catch { /* ignore */ }
+
+    // Read all retirement dividend holdings from localStorage
+    // Keys are retirement_divs_{id} — scan all localStorage keys
+    try {
+      const divMap = {}
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key?.startsWith('retirement_divs_')) {
+          const id = key.replace('retirement_divs_', '')
+          divMap[id] = JSON.parse(localStorage.getItem(key) ?? '{}')
+        }
+      }
+      setRetirementDivMap(divMap)
     } catch { /* ignore */ }
 
     // Fetch all backend data in parallel
@@ -185,6 +200,12 @@ export default function DashboardPage() {
 
   const projectedIncome = (divData && divHoldings)
     ? calcDividendIncome(divHoldings, divData.stocks ?? [])
+    : null
+
+  // Retirement div income: sum across all accounts' localStorage holdings
+  const retirementDivIncome = divData
+    ? Object.values(retirementDivMap).reduce((total, holdings) =>
+        total + calcDividendIncome(holdings, divData.stocks ?? []), 0)
     : null
 
   // Net worth = all assets minus all liabilities
@@ -270,8 +291,11 @@ export default function DashboardPage() {
           primary={loading ? null : usd(retirementTotal)}
           primaryLabel={`${(retirement ?? []).length} account${(retirement ?? []).length !== 1 ? 's' : ''}`}
           loading={loading}
-          rows={[
-            ['Contribution to net worth', loading ? null : signed(retirementTotal), 'text-green-400/80'],
+          rows={loading ? [] : [
+            ['Contribution to net worth', signed(retirementTotal), 'text-green-400/80'],
+            ...(retirementDivIncome != null && retirementDivIncome > 0 ? [
+              ['Retirement div. income', `${usd(retirementDivIncome)}/yr`, 'text-emerald-400'],
+            ] : []),
           ]}
         />
 
