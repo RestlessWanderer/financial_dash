@@ -242,19 +242,44 @@ def etrade_portfolio(session: Session = Depends(get_session)):
 
     base = _etrade_base(cred.sandbox)
 
+    def _log_request(label: str, resp) -> None:
+        """Log full request/response details for E*TRADE support diagnostics."""
+        req = resp.request
+        logging.warning(
+            "\n=== E*TRADE %s ===\n"
+            "URL:              %s\n"
+            "Request headers:  %s\n"
+            "Request body:     %s\n"
+            "Response status:  %s\n"
+            "Response headers: %s\n"
+            "Response body:    %s\n"
+            "X-ET-Trace:       %s\n"
+            "==================",
+            label,
+            req.url,
+            dict(req.headers),
+            req.body or "(none)",
+            resp.status_code,
+            dict(resp.headers),
+            resp.text[:2000],
+            resp.headers.get("X-ET-Trace", "(not present)"),
+        )
+
     # 1. Fetch account list
     try:
         r = _session().get(f"{base}/v1/accounts/list.json")
+        _log_request("accounts/list", r)
 
         # Auto-detect sandbox key used against production endpoint
         if r.status_code == 401 and "consumer_key_rejected" in r.text and not cred.sandbox:
-            logging.info("E*TRADE: consumer key is sandbox-only — switching to sandbox base URL and retrying")
+            logging.warning("E*TRADE: consumer key is sandbox-only — switching to sandbox base URL and retrying")
             cred.sandbox    = True
             cred.updated_at = datetime.utcnow()
             session.add(cred)
             session.commit()
             base = ETRADE_BASE_SAND
             r = _session().get(f"{base}/v1/accounts/list.json")
+            _log_request("accounts/list (sandbox retry)", r)
 
         if r.status_code == 401:
             # Genuine auth failure (expired token or bad credentials) — clear tokens
@@ -284,6 +309,7 @@ def etrade_portfolio(session: Session = Depends(get_session)):
     if not isinstance(accounts, list):
         accounts = [accounts]
 
+    logging.warning("E*TRADE raw account objects: %s", accounts)
 
     # 2. Fetch portfolio for each account
     results = []
@@ -296,6 +322,7 @@ def etrade_portfolio(session: Session = Depends(get_session)):
             r = _session().get(
                 f"{base}/v1/accounts/{key}/portfolio.json"
             )
+            _log_request(f"portfolio/{acct_id or key}", r)
             r.raise_for_status()
             port_data = r.json()
         except Exception:
