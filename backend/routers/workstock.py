@@ -284,11 +284,14 @@ def etrade_portfolio(session: Session = Depends(get_session)):
     if not isinstance(accounts, list):
         accounts = [accounts]
 
+
     # 2. Fetch portfolio for each account
     results = []
     for acct in accounts:
-        key  = acct.get("accountIdKey", "")
-        desc = acct.get("accountDesc", "")
+        key       = acct.get("accountIdKey", "")
+        desc      = acct.get("accountDesc", "")
+        acct_id   = acct.get("accountId", "")
+        acct_mode = acct.get("accountMode", "")
         try:
             r = _session().get(
                 f"{base}/v1/accounts/{key}/portfolio.json"
@@ -296,7 +299,7 @@ def etrade_portfolio(session: Session = Depends(get_session)):
             r.raise_for_status()
             port_data = r.json()
         except Exception:
-            results.append({"accountIdKey": key, "accountDesc": desc, "positions": []})
+            results.append({"accountIdKey": key, "accountDesc": desc, "accountId": acct_id, "accountMode": acct_mode, "positions": []})
             continue
 
         positions_raw = (
@@ -326,6 +329,8 @@ def etrade_portfolio(session: Session = Depends(get_session)):
         results.append({
             "accountIdKey": key,
             "accountDesc":  desc,
+            "accountId":    acct_id,
+            "accountMode":  acct_mode,
             "positions":    positions,
             "totalValue":   total_value,
         })

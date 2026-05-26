@@ -494,8 +494,18 @@ function ETradePanel() {
                     : <ChevronRight size={13} className="text-muted" />
                   }
                   <span className="text-sm font-medium">{acct.accountDesc || acct.accountIdKey}</span>
+                  {acct.accountId && (
+                    <span className="text-xs text-muted mono">
+                      ···{acct.accountId.slice(-4)}
+                    </span>
+                  )}
+                  {acct.accountMode && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.05] border border-border/50 text-muted uppercase tracking-wide">
+                      {acct.accountMode}
+                    </span>
+                  )}
                 </div>
-                <span className="mono text-sm font-semibold text-green-400">{usd(acct.totalValue)}</span>
+                <span className="mono text-sm font-semibold text-emerald-400">{usd(acct.totalValue)}</span>
               </button>
 
               {expandedAcct.has(acct.accountIdKey) && (
