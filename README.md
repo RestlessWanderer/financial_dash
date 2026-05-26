@@ -60,6 +60,7 @@ financial_dash/
 │           ├── AssetsPage.jsx          # Physical assets with value + debt tracking
 │           ├── LiquidAssetsPage.jsx    # Liquid accounts + inflation analysis
 │           ├── MortgagePage.jsx        # Amortization + extra payments + target payoff years
+│           ├── BudgetPage.jsx          # Monthly income/expense budget with remaining calc
 │           ├── PayoffVsInvestPage.jsx  # Mortgage payoff vs. invest split calculator
 │           └── DividendPage.jsx        # Dividend income portfolio tracker
 ├── .env.example                        # Environment variable template
@@ -202,13 +203,24 @@ The main overview page. Shows a **Net Worth hero card** with a full breakdown of
 - **Two Target Payoff Year fields** — calculates the flat extra payment needed to hit each target year and the total interest savings; one-click to apply that extra to the schedule
 - All data persists in `localStorage` instantly on every field change — survives navigation and page reloads
 
+### Budget (`/budget`)
+
+- Year-grouped expandable table spanning the same horizon as your mortgage target payoff years
+- Per-month rows: **Paycheck**, **Housing**, **Utilities**, **Groceries**, plus up to 10 user-defined custom expense categories
+- **Remaining** = paycheck − all expenses; shown in green when positive, red when negative
+- Year header rows show annual paycheck total and annual remaining at a glance
+- Custom category chips at the top — click to rename, hover to remove; fixed categories cannot be removed
+- The **Remaining** amount for each month feeds directly into the Payoff vs. Invest planner as the default monthly budget
+- All data saved to `localStorage` automatically
+
 ### Payoff vs. Invest (`/strategy`)
 
 - Models the optimal split of a monthly budget between extra mortgage principal and investing, based on your tax situation
 - Input: filing status, state, gross income, expected investment return
 - Calculates effective after-tax mortgage rate vs. after-tax investment return and suggests an optimal split
+- **Monthly budget auto-loaded from the Budget page** — the remaining balance for each month is used automatically; no separate default input needed
 - **Monthly Planner table** — year-grouped expandable rows spanning today through your longest target payoff year
-  - Override budget for any individual month
+  - Override budget for any individual month directly in the table (takes priority over Budget page)
   - Two target-year column pairs: shows minimum mortgage payment needed to stay on pace, with surplus redirected to investing
   - **Carry-forward deficit logic** — if a month's budget falls short, the deficit rolls forward to the next available month
 
@@ -266,7 +278,8 @@ Fill in the `SMTP_*` variables in `.env`. The backend sends a plain-text email o
 | Retirement, work stock, brokerage, physical assets, liquid accounts | Same SQLite database | ✅ Yes |
 | Retirement dividend holdings (per-account) | Browser `localStorage` | ✅ Yes (browser only) |
 | Mortgage details, extra payments, target payoff years | Browser `localStorage` | ✅ Yes (browser only) |
-| Payoff vs. Invest profile + monthly budgets | Browser `localStorage` | ✅ Yes (browser only) |
+| Payoff vs. Invest profile + monthly overrides | Browser `localStorage` | ✅ Yes (browser only) |
+| Budget income/expense data + custom category labels | Browser `localStorage` | ✅ Yes (browser only) |
 | Light/dark theme preference | Browser `localStorage` | ✅ Yes (browser only) |
 
 `make clean` is the only command that wipes the SQLite database — it prompts before doing so. `localStorage` data is browser-local and never committed to git. Nothing sensitive is ever stored in the repository.
