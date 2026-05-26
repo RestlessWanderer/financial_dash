@@ -348,13 +348,51 @@ function AddCard({ onAdd }) {
   )
 }
 
+/**
+ * Cumulative stats over `years` — all balances grow by APY, all prices grow by inflation.
+ * Returns the *cumulative* totals (not annualised), so they represent the full period impact.
+ */
+function calcCumulativeStats(accounts, inflationRate, years) {
+  return accounts.reduce((acc, a) => {
+    const apyRate   = (a.apy ?? 0) / 100
+    const inflRate  = inflationRate / 100
+    const principal = a.value ?? 0
+
+    // Balance after `years` compounding at APY
+    const balanceEnd = principal * Math.pow(1 + apyRate, years)
+    // What principal would be worth in today's dollars (purchasing power) if kept in account
+    const realValue  = balanceEnd / Math.pow(1 + inflRate, years)
+    // Cumulative interest earned
+    const cumInterest  = balanceEnd - principal
+    // Cumulative inflation drag = what inflation eroded in nominal terms
+    const nominalAfterInflation = principal * Math.pow(1 + inflRate, years)
+    const cumInflationDrag      = nominalAfterInflation - principal
+    // Net real gain/loss vs staying flat
+    const cumRealReturn = realValue - principal
+    // If invested at 7%
+    const investEnd    = principal * Math.pow(1 + INVESTMENT_RATE, years)
+    const cumInvest    = investEnd - principal
+    const cumOpCost    = investEnd - balanceEnd
+
+    acc.totalValue        += principal
+    acc.cumInterest       += cumInterest
+    acc.cumInflationDrag  += cumInflationDrag
+    acc.cumRealReturn     += cumRealReturn
+    acc.cumInvest         += cumInvest
+    acc.cumOpCost         += cumOpCost
+    return acc
+  }, { totalValue: 0, cumInterest: 0, cumInflationDrag: 0, cumRealReturn: 0, cumInvest: 0, cumOpCost: 0 })
+}
+
 /* ── Aggregate inflation banner ────────────────────────────────────── */
 function InflationBanner({ accounts, inflation }) {
+  const [horizon, setHorizon] = useState('1yr')
   if (!inflation || inflation.rate == null || accounts.length === 0) return null
 
   const inflationRate = inflation.rate
 
-  const totals = accounts.reduce((acc, a) => {
+  // Annual (1yr) totals — kept for the 1yr view
+  const annualTotals = accounts.reduce((acc, a) => {
     const { annualInterest, inflationDrag, realReturn, investReturn, opportunityCost } =
       calcInflationStats(a.value, a.apy, inflationRate)
     acc.totalValue      += a.value
@@ -366,12 +404,51 @@ function InflationBanner({ accounts, inflation }) {
     return acc
   }, { totalValue: 0, totalInterest: 0, totalDrag: 0, totalRealReturn: 0, totalInvest: 0, totalOpCost: 0 })
 
-  const isPositiveReal = totals.totalRealReturn >= 0
+  const stats5  = calcCumulativeStats(accounts, inflationRate, 5)
+  const stats10 = calcCumulativeStats(accounts, inflationRate, 10)
+
+  const horizonOptions = [
+    { key: '1yr',  label: '1 Year' },
+    { key: '5yr',  label: '5 Years' },
+    { key: '10yr', label: '10 Years' },
+  ]
+
+  // Pick active dataset
+  const active = horizon === '1yr'
+    ? {
+        interest:    annualTotals.totalInterest,
+        drag:        annualTotals.totalDrag,
+        realReturn:  annualTotals.totalRealReturn,
+        invest:      annualTotals.totalInvest,
+        opCost:      annualTotals.totalOpCost,
+        totalValue:  annualTotals.totalValue,
+      }
+    : horizon === '5yr'
+    ? {
+        interest:    stats5.cumInterest,
+        drag:        stats5.cumInflationDrag,
+        realReturn:  stats5.cumRealReturn,
+        invest:      stats5.cumInvest,
+        opCost:      stats5.cumOpCost,
+        totalValue:  stats5.totalValue,
+      }
+    : {
+        interest:    stats10.cumInterest,
+        drag:        stats10.cumInflationDrag,
+        realReturn:  stats10.cumRealReturn,
+        invest:      stats10.cumInvest,
+        opCost:      stats10.cumOpCost,
+        totalValue:  stats10.totalValue,
+      }
+
+  const isPositiveReal = active.realReturn >= 0
+  const periodLabel    = horizon === '1yr' ? 'per year' : `cumulative over ${horizon}`
 
   return (
     <div className="rounded-xl border border-border bg-panel p-4 space-y-3">
+      {/* Header row */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {isPositiveReal
             ? <TrendingUp size={16} className="text-green-400 shrink-0" />
             : <TrendingDown size={16} className="text-red-400 shrink-0" />
@@ -386,61 +463,116 @@ function InflationBanner({ accounts, inflation }) {
             </span>
           )}
         </div>
-        <p className="text-[10px] text-muted">vs {(INVESTMENT_RATE * 100).toFixed(0)}% avg market return</p>
+
+        {/* Horizon toggle */}
+        <div className="flex items-center gap-1 bg-surface rounded-lg p-0.5 border border-border shrink-0">
+          {horizonOptions.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setHorizon(key)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                horizon === key
+                  ? 'bg-accent/15 text-accent border border-accent/30'
+                  : 'text-muted hover:text-slate-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
+      <p className="text-[10px] text-muted">
+        {horizon === '1yr' ? 'Annual impact on current balances' : `Cumulative impact over ${horizon} at today's rates`}
+        {' · '}vs {(INVESTMENT_RATE * 100).toFixed(0)}% avg market return
+      </p>
+
+      {/* Metric tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="bg-surface rounded-lg px-3 py-2">
-          <p className="text-[10px] text-muted mb-1">Total Annual Interest</p>
-          <p className="mono text-sm font-bold text-green-400">+{usd(totals.totalInterest)}</p>
-          <p className="text-[10px] text-muted">earned from APY</p>
-        </div>
-        <div className="bg-surface rounded-lg px-3 py-2">
-          <p className="text-[10px] text-muted mb-1">Inflation Drag</p>
-          <p className="mono text-sm font-bold text-red-400">−{usd(totals.totalDrag)}</p>
-          <p className="text-[10px] text-muted">{inflationRate.toFixed(1)}% on {usd(totals.totalValue)}</p>
-        </div>
-        <div className="bg-surface rounded-lg px-3 py-2">
-          <p className="text-[10px] text-muted mb-1">Net Real Return</p>
-          <p className={`mono text-sm font-bold ${isPositiveReal ? 'text-green-400' : 'text-red-400'}`}>
-            {totals.totalRealReturn >= 0 ? '+' : '−'}{usd(Math.abs(totals.totalRealReturn))}
+          <p className="text-[10px] text-muted mb-1">
+            {horizon === '1yr' ? 'Annual Interest' : `Interest (${horizon})`}
           </p>
-          <p className="text-[10px] text-muted">interest − inflation</p>
+          <p className="mono text-sm font-bold text-green-400">+{usd(active.interest)}</p>
+          <p className="text-[10px] text-muted">{periodLabel}</p>
         </div>
         <div className="bg-surface rounded-lg px-3 py-2">
-          <p className="text-[10px] text-muted mb-1">If Invested @ 7%</p>
-          <p className="mono text-sm font-bold text-slate-200">+{usd(totals.totalInvest)}</p>
+          <p className="text-[10px] text-muted mb-1">
+            {horizon === '1yr' ? 'Inflation Drag' : `Inflation Drag (${horizon})`}
+          </p>
+          <p className="mono text-sm font-bold text-red-400">−{usd(active.drag)}</p>
+          <p className="text-[10px] text-muted">
+            {horizon === '1yr'
+              ? `${inflationRate.toFixed(1)}% on ${usd(active.totalValue)}`
+              : `${inflationRate.toFixed(1)}% compounded`}
+          </p>
+        </div>
+        <div className="bg-surface rounded-lg px-3 py-2">
+          <p className="text-[10px] text-muted mb-1">
+            {horizon === '1yr' ? 'Net Real Return' : `Real Return (${horizon})`}
+          </p>
+          <p className={`mono text-sm font-bold ${isPositiveReal ? 'text-green-400' : 'text-red-400'}`}>
+            {active.realReturn >= 0 ? '+' : '−'}{usd(Math.abs(active.realReturn))}
+          </p>
+          <p className="text-[10px] text-muted">
+            {horizon === '1yr' ? 'interest − inflation' : 'real purchasing power gain/loss'}
+          </p>
+        </div>
+        <div className="bg-surface rounded-lg px-3 py-2">
+          <p className="text-[10px] text-muted mb-1">
+            {horizon === '1yr' ? 'If Invested @ 7%' : `Invested Gain (${horizon})`}
+          </p>
+          <p className="mono text-sm font-bold text-slate-200">+{usd(active.invest)}</p>
           <p className="text-[10px] text-muted">avg market return</p>
         </div>
         <div className="bg-surface rounded-lg px-3 py-2">
-          <p className="text-[10px] text-muted mb-1">Opportunity Cost</p>
-          <p className="mono text-sm font-bold text-red-400">−{usd(totals.totalOpCost)}</p>
-          <p className="text-[10px] text-muted">vs investing / yr</p>
+          <p className="text-[10px] text-muted mb-1">
+            {horizon === '1yr' ? 'Opportunity Cost' : `Opportunity Cost (${horizon})`}
+          </p>
+          <p className="mono text-sm font-bold text-red-400">−{usd(active.opCost)}</p>
+          <p className="text-[10px] text-muted">vs investing</p>
         </div>
       </div>
     </div>
   )
 }
 
+/** Units of a staple purchasable after `years`, given balance compounds at APY and prices compound at inflation */
+function calcPPUnits(principal, apyRate, inflationRate, investRate, years, price) {
+  const balance_liquid   = principal * Math.pow(1 + apyRate,   years)
+  const balance_invested = principal * Math.pow(1 + investRate, years)
+  const futurePrice      = price     * Math.pow(1 + inflationRate, years)
+  return {
+    liquidUnits:   balance_liquid   / futurePrice,
+    investedUnits: balance_invested / futurePrice,
+  }
+}
+
 /* ── Purchasing power banner ───────────────────────────────────────── */
 function PurchasingPowerBanner({ accounts, inflation, staples }) {
+  const [horizon, setHorizon] = useState('1yr')
+
   if (
     !staples || staples.items.length === 0 ||
     !inflation || inflation.rate == null ||
     accounts.length === 0
   ) return null
 
-  const inflationRate = inflation.rate
+  const inflationRate = inflation.rate / 100
   const totalValue    = accounts.reduce((s, a) => s + (a.value ?? 0), 0)
   if (totalValue <= 0) return null
 
-  // Weighted average APY across all accounts (APY-weighted by balance)
-  const weightedAPY = accounts.reduce((s, a) => s + (a.value ?? 0) * (a.apy ?? 0), 0) / totalValue
+  // Weighted average APY across all accounts
+  const weightedAPY    = accounts.reduce((s, a) => s + (a.value ?? 0) * (a.apy ?? 0), 0) / totalValue
+  const weightedAPYRate = weightedAPY / 100
 
-  // In 1 year: balance grows by APY; prices grow by CPI inflation
-  const futureBalance_liquid   = totalValue * (1 + weightedAPY / 100)
-  const futureBalance_invested = totalValue * (1 + INVESTMENT_RATE)
-  const inflationMultiplier    = 1 + inflationRate / 100
+  const years = horizon === '1yr' ? 1 : horizon === '5yr' ? 5 : 10
+
+  const horizonOptions = [
+    { key: '1yr',  label: '1 Year' },
+    { key: '5yr',  label: '5 Years' },
+    { key: '10yr', label: '10 Years' },
+  ]
 
   return (
     <div className="rounded-xl border border-border bg-panel p-4 space-y-4">
@@ -452,32 +584,52 @@ function PurchasingPowerBanner({ accounts, inflation, staples }) {
           <div>
             <span className="text-sm font-semibold text-slate-200">Purchasing Power</span>
             <p className="text-[10px] text-muted mt-0.5">
-              How much of each staple your {usd(totalValue)} can buy — today vs. in 1 year
+              How much of each staple your {usd(totalValue)} can buy — today vs. after {horizon}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-[10px] text-muted shrink-0">
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-full bg-slate-500"></span>
-            Today
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-full bg-blue-400"></span>
-            1yr liquid ({weightedAPY.toFixed(1)}% avg APY)
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-full bg-green-400"></span>
-            1yr invested (7%)
-          </span>
+
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          {/* Horizon toggle */}
+          <div className="flex items-center gap-1 bg-surface rounded-lg p-0.5 border border-border">
+            {horizonOptions.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setHorizon(key)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                  horizon === key
+                    ? 'bg-accent/15 text-accent border border-accent/30'
+                    : 'text-muted hover:text-slate-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* Legend */}
+          <div className="flex items-center gap-3 text-[10px] text-muted">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-slate-500"></span>Today
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-blue-400"></span>
+              Liquid ({weightedAPY.toFixed(1)}% APY)
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-green-400"></span>
+              Invested (7%)
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Item grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {staples.items.map(item => {
-          const todayUnits    = totalValue / item.price
-          const liquidUnits   = futureBalance_liquid   / (item.price * inflationMultiplier)
-          const investedUnits = futureBalance_invested / (item.price * inflationMultiplier)
+          const todayUnits = totalValue / item.price
+          const { liquidUnits, investedUnits } = calcPPUnits(
+            totalValue, weightedAPYRate, inflationRate, INVESTMENT_RATE, years, item.price
+          )
           const liquidDelta   = fmtDelta(liquidUnits   - todayUnits)
           const investedDelta = fmtDelta(investedUnits - todayUnits)
 
@@ -498,9 +650,9 @@ function PurchasingPowerBanner({ accounts, inflation, staples }) {
                 <span className="mono font-medium text-slate-300">{fmtUnits(todayUnits)} {item.unit}s</span>
               </div>
 
-              {/* 1yr liquid */}
+              {/* Liquid after horizon */}
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-muted">1yr liquid</span>
+                <span className="text-muted">{horizon} liquid</span>
                 <div className="flex items-center gap-1.5">
                   <span className="mono text-blue-300">{fmtUnits(liquidUnits)}</span>
                   {liquidDelta && (
@@ -511,9 +663,9 @@ function PurchasingPowerBanner({ accounts, inflation, staples }) {
                 </div>
               </div>
 
-              {/* 1yr invested */}
+              {/* Invested after horizon */}
               <div className="flex items-center justify-between text-[11px] border-t border-border/40 pt-1.5">
-                <span className="text-muted">1yr invested</span>
+                <span className="text-muted">{horizon} invested</span>
                 <div className="flex items-center gap-1.5">
                   <span className="mono text-green-300">{fmtUnits(investedUnits)}</span>
                   {investedDelta && (
@@ -531,7 +683,7 @@ function PurchasingPowerBanner({ accounts, inflation, staples }) {
       {/* Footer note */}
       <p className="text-[10px] text-muted/70">
         Prices as of {staples.items[0]?.period ?? '—'} · BLS Average Retail Prices (APU series) ·
-        Future prices projected using CPI-U {inflationRate.toFixed(1)}% annual rate
+        Future prices projected at CPI-U {inflation.rate.toFixed(1)}%/yr compounded
         {staples.stale && ' · ⚠ stale data'}
       </p>
     </div>
