@@ -8,6 +8,8 @@ const LS_CUSTOM   = 'budget_custom_labels'
 const LS_MORTGAGE = 'mortgage_config'
 
 const DEFAULT_CUSTOM_LABELS = ['Car Payment', 'Insurance', 'Subscriptions', 'Dining', 'Misc']
+const PAY_KEYS     = ['pay1', 'pay2']
+const PAY_LABELS   = ['Pay 1', 'Pay 2']
 const FIXED_KEYS   = ['housing', 'utilities', 'groceries']
 const FIXED_LABELS = ['Housing', 'Utilities', 'Groceries']
 
@@ -64,19 +66,20 @@ function effective(rowData, defaults, key) {
   return 0
 }
 
-/** Remaining = paycheck − all expenses, using effective values */
+/** Remaining = (pay1 + pay2) − all expenses, using effective values */
 function calcRemaining(rowData, defaults, customLabels) {
-  const paycheck  = effective(rowData, defaults, 'paycheck')
+  const pay1      = effective(rowData, defaults, 'pay1')
+  const pay2      = effective(rowData, defaults, 'pay2')
   const housing   = effective(rowData, defaults, 'housing')
   const utilities = effective(rowData, defaults, 'utilities')
   const groceries = effective(rowData, defaults, 'groceries')
   const customSum = customLabels.reduce((s, _, i) => s + effective(rowData, defaults, `custom_${i}`), 0)
-  return paycheck - housing - utilities - groceries - customSum
+  return (pay1 + pay2) - housing - utilities - groceries - customSum
 }
 
 /* ── Default row (sticky below headers) ──────────────────────────── */
 function DefaultsRow({ defaults, customLabels, onChange }) {
-  const allKeys = ['paycheck', ...FIXED_KEYS, ...customLabels.map((_, i) => `custom_${i}`)]
+  const allKeys = [...PAY_KEYS, ...FIXED_KEYS, ...customLabels.map((_, i) => `custom_${i}`)]
 
   const cell = (key) => (
     <td key={key} className="px-2 py-2 border-b border-border/60">
@@ -139,7 +142,7 @@ function MonthRow({ ym, rowData = {}, defaults, customLabels, onChange }) {
   return (
     <tr className="border-b border-border/20 hover:bg-white/[0.015] transition-colors">
       <td className="pl-10 pr-3 py-1.5 text-xs text-muted w-36 whitespace-nowrap">{formatMonth(ym)}</td>
-      {cell('paycheck')}
+      {PAY_KEYS.map(k => cell(k))}
       {FIXED_KEYS.map(k => cell(k))}
       {customLabels.map((_, i) => cell(`custom_${i}`))}
       <td className="px-2 py-1.5 text-right">
@@ -276,7 +279,7 @@ export default function BudgetPage() {
       let paycheck = 0, remaining = 0
       for (const ym of months) {
         const row = budgetData[ym] ?? {}
-        paycheck  += effective(row, defaults, 'paycheck')
+        paycheck  += effective(row, defaults, 'pay1') + effective(row, defaults, 'pay2')
         remaining += calcRemaining(row, defaults, customLabels)
       }
       stats[year] = { paycheck, remaining }
@@ -349,7 +352,8 @@ export default function BudgetPage() {
             {/* Column headers */}
             <tr className="text-[11px] text-muted uppercase tracking-wide bg-white/[0.02] border-b border-border">
               <th className="px-3 py-3 text-left w-36">Month</th>
-              <th className="px-2 py-3 text-right min-w-[100px] text-slate-300">Paycheck</th>
+              <th className="px-2 py-3 text-right min-w-[100px] text-slate-300">Pay 1</th>
+              <th className="px-2 py-3 text-right min-w-[100px] text-slate-300">Pay 2</th>
               {FIXED_LABELS.map(l => (
                 <th key={l} className="px-2 py-3 text-right min-w-[90px]">{l}</th>
               ))}

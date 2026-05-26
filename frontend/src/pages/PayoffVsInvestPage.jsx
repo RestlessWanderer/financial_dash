@@ -381,7 +381,7 @@ export default function PayoffVsInvestPage() {
     }
     // Fall back to Budget page remaining (using effective values with defaults)
     const row       = budgetData[ym] ?? {}
-    const paycheck  = budgetEffective(row, 'paycheck')
+    const paycheck  = budgetEffective(row, 'pay1') + budgetEffective(row, 'pay2')
     const housing   = budgetEffective(row, 'housing')
     const utilities = budgetEffective(row, 'utilities')
     const groceries = budgetEffective(row, 'groceries')
