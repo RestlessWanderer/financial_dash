@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Scale, TrendingUp, Home, Info, AlertCircle, Wallet, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Scale, TrendingUp, Home, Info, AlertCircle, Wallet, SlidersHorizontal, Trash2, AlertTriangle } from 'lucide-react'
 
 const INPUT  = 'w-full bg-surface border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent transition-colors'
 const SELECT = INPUT + ' cursor-pointer'
@@ -100,6 +100,78 @@ function calcMortgageBalance(config, extras) {
   return Math.round(balance * 100) / 100
 }
 
+/** Calculate the flat monthly extra payment required to hit a target payoff year. */
+function calcRequiredExtra(mortgageConfig, mortgageBalance, targetYearStr) {
+  if (!mortgageConfig || !mortgageBalance || !targetYearStr) return null
+  const targetY   = parseInt(targetYearStr)
+  if (!targetY) return null
+  const principal  = parseFloat(mortgageConfig.principal) || 0
+  const annualRate = parseFloat(mortgageConfig.rate)       || 0
+  const termYears  = parseInt(mortgageConfig.years)        || 30
+  if (principal <= 0 || annualRate <= 0) return null
+  const [startY, startM] = mortgageConfig.startDate.split('-').map(Number)
+  const startMonth0 = startM - 1
+
+  const monthlyRate   = annualRate / 100 / 12
+  const totalMonths   = termYears * 12
+  const stdPayment    = monthlyRate === 0
+    ? principal / totalMonths
+    : principal * monthlyRate * Math.pow(1 + monthlyRate, totalMonths) /
+      (Math.pow(1 + monthlyRate, totalMonths) - 1)
+
+  const targetMonths  = (targetY - startY) * 12 + (12 - startMonth0)
+  if (targetMonths <= 0 || targetMonths >= totalMonths) return null
+
+  // Payment required to pay off current balance in the remaining targetMonths
+  const reqPayment = monthlyRate === 0
+    ? mortgageBalance / targetMonths
+    : mortgageBalance * monthlyRate * Math.pow(1 + monthlyRate, targetMonths) /
+      (Math.pow(1 + monthlyRate, targetMonths) - 1)
+
+  const extra = Math.ceil(Math.max(0, reqPayment - stdPayment))
+  return { targetY, requiredExtra: extra, reqPayment: Math.round(reqPayment * 100) / 100 }
+}
+
+/**
+ * Build the per-month target-year plan with carry-forward logic.
+ *
+ * Each month:
+ *  - needed = requiredExtra + carry (pace + any prior shortfall)
+ *  - if budget >= needed: pay 'needed' to mortgage, rest to invest, carry → 0
+ *  - if budget < needed: pay all budget to mortgage, carry += (needed - budget)
+ *  - if budget > needed: extra budget reclaimed for investing (no overpaying)
+ */
+function buildTargetPlan(months, monthBudgets, defaultBudget, requiredExtra) {
+  let carry = 0
+  return months.map(ym => {
+    const budget  = parseFloat(monthBudgets[ym] || defaultBudget) || 0
+    const needed  = Math.round(requiredExtra + carry)
+    const deficit = carry > 0
+
+    let mortgagePaid, invest, newCarry
+    if (budget <= 0) {
+      // No budget at all — full amount rolls forward
+      mortgagePaid = 0
+      invest       = 0
+      newCarry     = needed
+    } else if (budget >= needed) {
+      // Can fully fund the needed amount — surplus goes to invest
+      mortgagePaid = needed
+      invest       = budget - needed
+      newCarry     = 0
+    } else {
+      // Under-funded — everything goes to mortgage, shortfall carries forward
+      mortgagePaid = budget
+      invest       = 0
+      newCarry     = needed - budget
+    }
+
+    const carryIn = carry
+    carry = newCarry
+    return { ym, budget, needed, mortgagePaid, invest, carryIn, carryOut: newCarry, deficit }
+  })
+}
+
 function next12Months() {
   const months = []
   const now = new Date()
@@ -126,40 +198,26 @@ function analyze(profile, mortgageRateStr, mortgageBalance) {
   const fedMarginal   = getMarginalRate(income, FED_BRACKETS[status])
   const stateMarginal = STATE_TAX[state] ?? 0
   const ltcgFed       = getMarginalRate(income, LTCG_BRACKETS[status])
-  // Most states tax capital gains as ordinary income
   const ltcgState     = stateMarginal
 
-  // Itemization: mortgage interest + estimated SALT (state income tax + ~$4K property tax, capped at $10K)
-  const annualInterest = mBal * mRate / 100
-  const estStateIncomeTax = income * stateMarginal * 0.6  // ~60% of marginal ≈ effective rate
-  const saltDeduction  = Math.min(estStateIncomeTax + 4_000, 10_000)
-  const totalItemized  = annualInterest + saltDeduction
-  const stdDed         = STD_DEDUCTION[status]
-  const itemizes       = totalItemized > stdDed
+  const annualInterest    = mBal * mRate / 100
+  const estStateIncomeTax = income * stateMarginal * 0.6
+  const saltDeduction     = Math.min(estStateIncomeTax + 4_000, 10_000)
+  const totalItemized     = annualInterest + saltDeduction
+  const stdDed            = STD_DEDUCTION[status]
+  const itemizes          = totalItemized > stdDed
 
-  // Effective mortgage rate after-tax
-  // Federal: can deduct mortgage interest → saves fedMarginal × interest
-  // State: most states that have income tax also allow mortgage interest deduction
-  const deductionBenefit = itemizes
-    ? fedMarginal + (stateMarginal > 0 ? stateMarginal : 0)
-    : 0
+  const deductionBenefit      = itemizes ? fedMarginal + (stateMarginal > 0 ? stateMarginal : 0) : 0
   const effectiveMortgageRate = mRate / 100 * (1 - deductionBenefit)
+  const afterTaxInvestReturn  = expRet * (1 - ltcgFed - ltcgState)
+  const diff                  = afterTaxInvestReturn - effectiveMortgageRate
 
-  // After-tax investment return (long-term capital gains treatment)
-  const afterTaxInvestReturn = expRet * (1 - ltcgFed - ltcgState)
-
-  const diff = afterTaxInvestReturn - effectiveMortgageRate
-
-  // Optimal invest fraction: proportional to each rate's share of the total
-  //   investFrac = R_invest / (R_invest + R_mortgage)
-  // → 50/50 when equal; tilts toward whichever rate is higher
-  // Edge cases: if invest return ≤ 0, all mortgage; if mortgage rate ≤ 0, all invest
   let investFrac
   const totalRate = afterTaxInvestReturn + effectiveMortgageRate
-  if (afterTaxInvestReturn <= 0)  investFrac = 0.0
+  if (afterTaxInvestReturn <= 0)       investFrac = 0.0
   else if (effectiveMortgageRate <= 0) investFrac = 1.0
-  else if (totalRate <= 0)        investFrac = 0.5
-  else                            investFrac = afterTaxInvestReturn / totalRate
+  else if (totalRate <= 0)             investFrac = 0.5
+  else                                 investFrac = afterTaxInvestReturn / totalRate
 
   return {
     income, fedMarginal, stateMarginal, ltcgFed, ltcgState,
@@ -183,7 +241,7 @@ function Tile({ label, value, sub, color = 'default' }) {
   return (
     <div className={`rounded-xl p-3 border ${cls}`}>
       <p className="text-[10px] text-muted uppercase tracking-widest mb-1">{label}</p>
-      <p className={`mono text-lg font-bold leading-none`}>{value}</p>
+      <p className="mono text-lg font-bold leading-none">{value}</p>
       {sub && <p className="text-[10px] text-muted mt-1 leading-relaxed">{sub}</p>}
     </div>
   )
@@ -200,24 +258,24 @@ export default function PayoffVsInvestPage() {
     expectedReturn: '7',
   })
   const [defaultBudget,  setDefaultBudget]  = useState('')
-  const [monthBudgets,   setMonthBudgets]   = useState({})  // 'YYYY-MM' → amount string
-  const [customSplit,    setCustomSplit]     = useState(null) // null = use recommended
+  const [monthBudgets,   setMonthBudgets]   = useState({})
+  const [customSplit,    setCustomSplit]     = useState(null)
   const [mortgageConfig, setMortgageConfig] = useState(null)
   const [mortgageExtras, setMortgageExtras] = useState(null)
 
   // Load from localStorage
   useEffect(() => {
     try {
-      const p  = localStorage.getItem('payoff_vs_invest_profile')
-      const b  = localStorage.getItem('payoff_vs_invest_budget')
-      const mb = localStorage.getItem('payoff_vs_invest_month_budgets')
-      const cs = localStorage.getItem('payoff_vs_invest_split')
+      const p   = localStorage.getItem('payoff_vs_invest_profile')
+      const b   = localStorage.getItem('payoff_vs_invest_budget')
+      const mb  = localStorage.getItem('payoff_vs_invest_month_budgets')
+      const cs  = localStorage.getItem('payoff_vs_invest_split')
       const cfg = localStorage.getItem('mortgage_config')
       const ext = localStorage.getItem('mortgage_extras')
-      if (p)  setProfile(JSON.parse(p))
-      if (b)  setDefaultBudget(b)
-      if (mb) setMonthBudgets(JSON.parse(mb))
-      if (cs) setCustomSplit(parseFloat(cs))
+      if (p)   setProfile(JSON.parse(p))
+      if (b)   setDefaultBudget(b)
+      if (mb)  setMonthBudgets(JSON.parse(mb))
+      if (cs)  setCustomSplit(parseFloat(cs))
       if (cfg) setMortgageConfig(JSON.parse(cfg))
       if (ext) setMortgageExtras(JSON.parse(ext))
     } catch { /* ignore */ }
@@ -264,7 +322,7 @@ export default function PayoffVsInvestPage() {
     localStorage.removeItem('payoff_vs_invest_split')
   }
 
-  // Derived
+  /* ── Derived ── */
   const mortgageRate    = mortgageConfig?.rate ?? ''
   const mortgageBalance = calcMortgageBalance(mortgageConfig, mortgageExtras)
   const hasMortgage     = mortgageBalance !== null && mortgageRate !== ''
@@ -272,21 +330,52 @@ export default function PayoffVsInvestPage() {
   const canAnalyze = !!(profile.grossIncome && parseFloat(profile.grossIncome) > 0)
   const a = canAnalyze ? analyze(profile, mortgageRate, mortgageBalance ?? 0) : null
 
-  // Active invest fraction: custom override or recommended
-  const investFrac = customSplit !== null ? customSplit : (a?.investFrac ?? 0.5)
+  const investFrac   = customSplit !== null ? customSplit : (a?.investFrac ?? 0.5)
   const mortgageFrac = 1 - investFrac
 
-  // Monthly totals
+  /* Target year plans — derived from mortgage_config's targetYear / targetYear2 */
+  const target1 = useMemo(
+    () => calcRequiredExtra(mortgageConfig, mortgageBalance, mortgageConfig?.targetYear),
+    [mortgageConfig, mortgageBalance]
+  )
+  const target2 = useMemo(
+    () => calcRequiredExtra(mortgageConfig, mortgageBalance, mortgageConfig?.targetYear2),
+    [mortgageConfig, mortgageBalance]
+  )
+
+  const plan1 = useMemo(
+    () => target1 ? buildTargetPlan(MONTHS, monthBudgets, defaultBudget, target1.requiredExtra) : null,
+    [target1, monthBudgets, defaultBudget]
+  )
+  const plan2 = useMemo(
+    () => target2 ? buildTargetPlan(MONTHS, monthBudgets, defaultBudget, target2.requiredExtra) : null,
+    [target2, monthBudgets, defaultBudget]
+  )
+
+  const hasTargets = !!(plan1 || plan2)
+
+  /* Standard split totals (used when no target plans, or alongside them) */
   const totalBudget   = MONTHS.reduce((s, ym) => s + (parseFloat(monthBudgets[ym] || defaultBudget) || 0), 0)
   const totalMortgage = MONTHS.reduce((s, ym) => {
     const b = parseFloat(monthBudgets[ym] || defaultBudget) || 0
     return s + Math.round(b * mortgageFrac)
   }, 0)
-  const totalInvest   = MONTHS.reduce((s, ym) => {
+  const totalInvest = MONTHS.reduce((s, ym) => {
     const b = parseFloat(monthBudgets[ym] || defaultBudget) || 0
     const m = Math.round(b * mortgageFrac)
     return s + (b - m)
   }, 0)
+
+  /* Target plan totals */
+  const planTotal = (plan) => plan
+    ? plan.reduce((acc, r) => ({
+        mortgage: acc.mortgage + r.mortgagePaid,
+        invest:   acc.invest   + r.invest,
+      }), { mortgage: 0, invest: 0 })
+    : null
+
+  const totals1 = planTotal(plan1)
+  const totals2 = planTotal(plan2)
 
   return (
     <div className="space-y-6">
@@ -382,15 +471,32 @@ export default function PayoffVsInvestPage() {
               Mortgage (auto-loaded from Mortgage page)
             </p>
             {hasMortgage ? (
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-white/[0.03] border border-border/40 rounded-lg px-3 py-2">
-                  <p className="text-[10px] text-muted">Interest Rate</p>
-                  <p className="mono text-sm font-semibold text-slate-200">{mortgageRate}%</p>
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-white/[0.03] border border-border/40 rounded-lg px-3 py-2">
+                    <p className="text-[10px] text-muted">Interest Rate</p>
+                    <p className="mono text-sm font-semibold text-slate-200">{mortgageRate}%</p>
+                  </div>
+                  <div className="bg-white/[0.03] border border-border/40 rounded-lg px-3 py-2">
+                    <p className="text-[10px] text-muted">Current Balance</p>
+                    <p className="mono text-sm font-semibold text-slate-200">{usd(mortgageBalance)}</p>
+                  </div>
                 </div>
-                <div className="bg-white/[0.03] border border-border/40 rounded-lg px-3 py-2">
-                  <p className="text-[10px] text-muted">Current Balance</p>
-                  <p className="mono text-sm font-semibold text-slate-200">{usd(mortgageBalance)}</p>
-                </div>
+                {/* Target year summary */}
+                {(target1 || target2) && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { t: target1, label: 'Target #1', cls: 'border-accent/30 bg-accent/[0.04]', valCls: 'text-accent' },
+                      { t: target2, label: 'Target #2', cls: 'border-amber-500/30 bg-amber-500/[0.04]', valCls: 'text-amber-400' },
+                    ].map(({ t, label, cls, valCls }) => t && (
+                      <div key={label} className={`border rounded-lg px-3 py-2 ${cls}`}>
+                        <p className="text-[10px] text-muted">{label}: {t.targetY}</p>
+                        <p className={`mono text-sm font-semibold ${valCls}`}>+{usd(t.requiredExtra)}/mo</p>
+                        <p className="text-[10px] text-muted">extra needed</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-xs text-muted">
@@ -487,7 +593,6 @@ export default function PayoffVsInvestPage() {
                       : '⚖️ Rates are essentially equal — split evenly'}
                   </p>
 
-                  {/* Big split numbers */}
                   <div className="flex items-center gap-3 mb-3">
                     <div className="flex-1 rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-3 py-2 text-center">
                       <p className="mono text-2xl font-bold text-yellow-400 leading-none">
@@ -519,7 +624,6 @@ export default function PayoffVsInvestPage() {
                 </div>
               )}
 
-              {/* Note on risk */}
               <p className="text-[10px] text-muted leading-relaxed">
                 ℹ️ Mortgage payoff is a <em>guaranteed</em> return. Investing has a higher
                 <em> expected</em> return but comes with market volatility and no guarantees.
@@ -542,6 +646,7 @@ export default function PayoffVsInvestPage() {
               <p className="text-xs text-muted mt-0.5">
                 Set a default monthly budget, override individual months for bonuses or lean months,
                 and adjust the split slider to explore different scenarios.
+                {hasTargets && ' Target year columns show the minimum needed to stay on pace, with surplus redirected to investing.'}
               </p>
             </div>
 
@@ -566,6 +671,7 @@ export default function PayoffVsInvestPage() {
               <p className="text-xs text-slate-300 flex items-center gap-1.5 font-medium">
                 <SlidersHorizontal size={13} className="text-accent" />
                 Allocation Split
+                {hasTargets && <span className="text-muted font-normal">(used as baseline; target cols cap the mortgage portion)</span>}
               </p>
               {customSplit !== null && (
                 <button
@@ -591,15 +697,9 @@ export default function PayoffVsInvestPage() {
               </span>
             </div>
 
-            {/* Visual bar */}
             <div className="h-2 rounded-full overflow-hidden flex">
-              <div
-                className="bg-yellow-500/60 transition-all duration-150"
-                style={{ width: `${mortgageFrac * 100}%` }}
-              />
-              <div
-                className="bg-green-500/60 flex-1 transition-all duration-150"
-              />
+              <div className="bg-yellow-500/60 transition-all duration-150" style={{ width: `${mortgageFrac * 100}%` }} />
+              <div className="bg-green-500/60 flex-1 transition-all duration-150" />
             </div>
 
             <div className="flex justify-between text-[10px] text-muted">
@@ -614,32 +714,75 @@ export default function PayoffVsInvestPage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border/50 text-muted">
-                  <th className="text-left font-normal pb-2 pr-4 whitespace-nowrap">Month</th>
+                  <th className="text-left font-normal pb-2 pr-3 whitespace-nowrap">Month</th>
                   <th className="text-right font-normal pb-2 px-3 whitespace-nowrap">Budget</th>
+
+                  {/* Standard split columns (always shown) */}
                   <th className="text-right font-normal pb-2 px-3 whitespace-nowrap">
-                    <span className="text-yellow-400">→ Extra Mortgage</span>
+                    <span className="text-yellow-400">Mortgage</span>
                     <span className="text-muted ml-1">({Math.round(mortgageFrac * 100)}%)</span>
                   </th>
                   <th className="text-right font-normal pb-2 px-3 whitespace-nowrap">
-                    <span className="text-green-400">→ Brokerage</span>
+                    <span className="text-green-400">Invest</span>
                     <span className="text-muted ml-1">({Math.round(investFrac * 100)}%)</span>
                   </th>
-                  <th className="text-right font-normal pb-2 pl-3 whitespace-nowrap">
-                    Override Budget
+
+                  {/* Target #1 columns */}
+                  {plan1 && (
+                    <>
+                      <th className="text-right font-normal pb-2 px-3 whitespace-nowrap border-l border-border/40">
+                        <span className="text-accent">Mtg #1</span>
+                        <span className="text-muted ml-1">(→{target1.targetY})</span>
+                      </th>
+                      <th className="text-right font-normal pb-2 px-3 whitespace-nowrap">
+                        <span className="text-accent/70">Inv #1</span>
+                      </th>
+                    </>
+                  )}
+
+                  {/* Target #2 columns */}
+                  {plan2 && (
+                    <>
+                      <th className="text-right font-normal pb-2 px-3 whitespace-nowrap border-l border-border/40">
+                        <span className="text-amber-400">Mtg #2</span>
+                        <span className="text-muted ml-1">(→{target2.targetY})</span>
+                      </th>
+                      <th className="text-right font-normal pb-2 px-3 whitespace-nowrap">
+                        <span className="text-amber-400/70">Inv #2</span>
+                      </th>
+                    </>
+                  )}
+
+                  <th className="text-right font-normal pb-2 pl-3 whitespace-nowrap border-l border-border/40">
+                    Override
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {MONTHS.map(ym => {
+                {MONTHS.map((ym, i) => {
                   const hasOverride = ym in monthBudgets && monthBudgets[ym] !== ''
                   const budget      = parseFloat(monthBudgets[ym] || defaultBudget) || 0
-                  const mortgage    = Math.round(budget * mortgageFrac)
-                  const invest      = budget - mortgage
+                  const stdMortgage = Math.round(budget * mortgageFrac)
+                  const stdInvest   = budget - stdMortgage
+                  const r1 = plan1?.[i]
+                  const r2 = plan2?.[i]
+                  const hasDeficit = (r1?.deficit && r1.carryIn > 0) || (r2?.deficit && r2.carryIn > 0)
+
                   return (
-                    <tr key={ym} className="border-b border-border/25 hover:bg-white/[0.02] transition-colors">
-                      <td className="py-2.5 pr-4 text-slate-300 font-medium whitespace-nowrap">
-                        {formatMonth(ym)}
+                    <tr key={ym} className={`border-b border-border/25 transition-colors ${
+                      hasDeficit
+                        ? 'bg-red-500/[0.04] hover:bg-red-500/[0.07]'
+                        : 'hover:bg-white/[0.02]'
+                    }`}>
+                      {/* Month */}
+                      <td className="py-2.5 pr-3 text-slate-300 font-medium whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          {hasDeficit && <AlertTriangle size={10} className="text-red-400 shrink-0" />}
+                          {formatMonth(ym)}
+                        </div>
                       </td>
+
+                      {/* Budget */}
                       <td className="py-2.5 px-3 text-right">
                         <span className={`mono font-medium ${hasOverride ? 'text-accent' : 'text-slate-400'}`}>
                           {budget > 0 ? usd(budget) : <span className="text-muted/50">—</span>}
@@ -648,17 +791,69 @@ export default function PayoffVsInvestPage() {
                           <span className="ml-1 text-[9px] text-accent uppercase tracking-wide">custom</span>
                         )}
                       </td>
+
+                      {/* Standard split */}
                       <td className="py-2.5 px-3 text-right">
                         <span className="mono text-yellow-400">
-                          {budget > 0 ? usd(mortgage) : <span className="text-muted/50">—</span>}
+                          {budget > 0 ? usd(stdMortgage) : <span className="text-muted/50">—</span>}
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-right">
                         <span className="mono text-green-400">
-                          {budget > 0 ? usd(invest) : <span className="text-muted/50">—</span>}
+                          {budget > 0 ? usd(stdInvest) : <span className="text-muted/50">—</span>}
                         </span>
                       </td>
-                      <td className="py-2.5 pl-3 text-right">
+
+                      {/* Target #1 */}
+                      {plan1 && r1 && (
+                        <>
+                          <td className="py-2.5 px-3 text-right border-l border-border/40">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className={`mono ${r1.carryOut > 0 ? 'text-red-400' : 'text-accent'}`}>
+                                {budget > 0 ? usd(r1.mortgagePaid) : <span className="text-muted/50">—</span>}
+                              </span>
+                              {r1.carryIn > 0 && (
+                                <span className="text-[9px] text-red-400/80">+{usd(r1.carryIn)} deficit</span>
+                              )}
+                              {r1.carryOut > 0 && (
+                                <span className="text-[9px] text-red-400/80">{usd(r1.carryOut)} short</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <span className="mono text-accent/70">
+                              {budget > 0 ? usd(r1.invest) : <span className="text-muted/50">—</span>}
+                            </span>
+                          </td>
+                        </>
+                      )}
+
+                      {/* Target #2 */}
+                      {plan2 && r2 && (
+                        <>
+                          <td className="py-2.5 px-3 text-right border-l border-border/40">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className={`mono ${r2.carryOut > 0 ? 'text-red-400' : 'text-amber-400'}`}>
+                                {budget > 0 ? usd(r2.mortgagePaid) : <span className="text-muted/50">—</span>}
+                              </span>
+                              {r2.carryIn > 0 && (
+                                <span className="text-[9px] text-red-400/80">+{usd(r2.carryIn)} deficit</span>
+                              )}
+                              {r2.carryOut > 0 && (
+                                <span className="text-[9px] text-red-400/80">{usd(r2.carryOut)} short</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <span className="mono text-amber-400/70">
+                              {budget > 0 ? usd(r2.invest) : <span className="text-muted/50">—</span>}
+                            </span>
+                          </td>
+                        </>
+                      )}
+
+                      {/* Override input */}
+                      <td className="py-2.5 pl-3 text-right border-l border-border/40">
                         <div className="relative inline-flex">
                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">$</span>
                           <input
@@ -678,8 +873,8 @@ export default function PayoffVsInvestPage() {
               {/* Totals */}
               {totalBudget > 0 && (
                 <tfoot>
-                  <tr>
-                    <td className="pt-3 pr-4 text-slate-400 font-semibold text-xs">12-Month Total</td>
+                  <tr className="border-t border-border/60">
+                    <td className="pt-3 pr-3 text-slate-400 font-semibold text-xs whitespace-nowrap">12-Mo Total</td>
                     <td className="pt-3 px-3 text-right">
                       <span className="mono text-sm font-bold text-slate-300">{usd(totalBudget)}</span>
                     </td>
@@ -689,19 +884,91 @@ export default function PayoffVsInvestPage() {
                     <td className="pt-3 px-3 text-right">
                       <span className="mono text-sm font-bold text-green-400">{usd(totalInvest)}</span>
                     </td>
-                    <td />
+                    {plan1 && totals1 && (
+                      <>
+                        <td className="pt-3 px-3 text-right border-l border-border/40">
+                          <span className="mono text-sm font-bold text-accent">{usd(totals1.mortgage)}</span>
+                        </td>
+                        <td className="pt-3 px-3 text-right">
+                          <span className="mono text-sm font-bold text-accent/70">{usd(totals1.invest)}</span>
+                        </td>
+                      </>
+                    )}
+                    {plan2 && totals2 && (
+                      <>
+                        <td className="pt-3 px-3 text-right border-l border-border/40">
+                          <span className="mono text-sm font-bold text-amber-400">{usd(totals2.mortgage)}</span>
+                        </td>
+                        <td className="pt-3 px-3 text-right">
+                          <span className="mono text-sm font-bold text-amber-400/70">{usd(totals2.invest)}</span>
+                        </td>
+                      </>
+                    )}
+                    <td className="border-l border-border/40" />
                   </tr>
+
+                  {/* Invest gain comparison row when targets exist */}
+                  {hasTargets && (totals1 || totals2) && (
+                    <tr>
+                      <td colSpan={4} className="pt-1 pr-3 pb-1 text-[10px] text-muted">
+                        vs. standard split — invest delta:
+                      </td>
+                      {plan1 && totals1 && (
+                        <>
+                          <td className="pt-1 px-3 text-right border-l border-border/40" />
+                          <td className="pt-1 px-3 text-right pb-1">
+                            {(() => {
+                              const delta = totals1.invest - totalInvest
+                              return (
+                                <span className={`mono text-xs font-semibold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {delta >= 0 ? '+' : '−'}{usd(Math.abs(delta))}
+                                </span>
+                              )
+                            })()}
+                          </td>
+                        </>
+                      )}
+                      {plan2 && totals2 && (
+                        <>
+                          <td className="pt-1 px-3 text-right border-l border-border/40" />
+                          <td className="pt-1 px-3 text-right pb-1">
+                            {(() => {
+                              const delta = totals2.invest - totalInvest
+                              return (
+                                <span className={`mono text-xs font-semibold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {delta >= 0 ? '+' : '−'}{usd(Math.abs(delta))}
+                                </span>
+                              )
+                            })()}
+                          </td>
+                        </>
+                      )}
+                      <td className="border-l border-border/40" />
+                    </tr>
+                  )}
                 </tfoot>
               )}
             </table>
           </div>
 
-          {(parseFloat(defaultBudget) > 0 || Object.keys(monthBudgets).length > 0) && (
-            <p className="text-[10px] text-muted">
-              Months with a <span className="text-accent">blue "custom"</span> label use a per-month override.
-              Clear the override field to revert to the default budget.
-            </p>
-          )}
+          {/* Legend */}
+          <div className="flex flex-wrap gap-4 text-[10px] text-muted">
+            {(parseFloat(defaultBudget) > 0 || Object.keys(monthBudgets).length > 0) && (
+              <span>Months with a <span className="text-accent">blue "custom"</span> label use a per-month override.</span>
+            )}
+            {hasTargets && (
+              <>
+                <span>
+                  <span className="text-accent font-medium">Mtg #1</span> / <span className="text-amber-400 font-medium">Mtg #2</span>
+                  {' '}= minimum to stay on pace for each target year; surplus beyond that goes to invest.
+                </span>
+                <span className="flex items-center gap-1">
+                  <AlertTriangle size={9} className="text-red-400" />
+                  Red rows = month is under-funded; shortfall carries forward to the next month.
+                </span>
+              </>
+            )}
+          </div>
         </div>
       )}
 
