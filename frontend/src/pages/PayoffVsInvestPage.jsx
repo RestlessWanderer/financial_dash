@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import { Scale, TrendingUp, Home, Info, AlertCircle, Wallet, SlidersHorizontal, Trash2, AlertTriangle } from 'lucide-react'
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
+import { Scale, TrendingUp, Home, Info, AlertCircle, Wallet, SlidersHorizontal, Trash2, AlertTriangle, ChevronRight, ChevronDown } from 'lucide-react'
 
 const INPUT  = 'w-full bg-surface border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent transition-colors'
 const SELECT = INPUT + ' cursor-pointer'
@@ -172,19 +172,63 @@ function buildTargetPlan(months, monthBudgets, defaultBudget, requiredExtra) {
   })
 }
 
-function next12Months() {
+/**
+ * Build list of 'YYYY-MM' strings from today through endYear (inclusive, through Dec).
+ * Falls back to 12 months if no endYear provided.
+ */
+function buildMonthList(endYear) {
+  const now    = new Date()
+  const startY = now.getFullYear()
+  const startM = now.getMonth()  // 0-indexed
+  const finalY = endYear ?? startY
+  const finalM = 11               // always run through December of endYear
+
   const months = []
-  const now = new Date()
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
-    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  let y = startY, m = startM
+  while (y < finalY || (y === finalY && m <= finalM)) {
+    months.push(`${y}-${String(m + 1).padStart(2, '0')}`)
+    m++
+    if (m > 11) { m = 0; y++ }
+  }
+  // Always return at least 12 months
+  if (months.length < 12) {
+    const d = new Date(startY, startM + months.length, 1)
+    while (months.length < 12) {
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+      d.setMonth(d.getMonth() + 1)
+    }
   }
   return months
 }
 
 function formatMonth(ym) {
   const [y, m] = ym.split('-').map(Number)
-  return new Date(y, m - 1, 1).toLocaleString('default', { month: 'short', year: 'numeric' })
+  return new Date(y, m - 1, 1).toLocaleString('default', { month: 'long' })
+}
+
+/**
+ * Group a flat array of plan rows (each with a `ym` field) into year buckets,
+ * computing year-level totals for the summary row.
+ */
+function groupPlanByYear(rows) {
+  const map = new Map()
+  for (const row of rows) {
+    const year = parseInt(row.ym.split('-')[0])
+    if (!map.has(year)) {
+      map.set(year, { year, rows: [], budget: 0, stdMortgage: 0, stdInvest: 0, m1: 0, i1: 0, m2: 0, i2: 0, hasDeficit: false })
+    }
+    const g = map.get(year)
+    g.rows.push(row)
+    g.budget      += row.budget
+    g.stdMortgage += row.stdMortgage
+    g.stdInvest   += row.stdInvest
+    g.m1          += row.m1 ?? 0
+    g.i1          += row.i1 ?? 0
+    g.m2          += row.m2 ?? 0
+    g.i2          += row.i2 ?? 0
+    if (row.deficit1 || row.deficit2) g.hasDeficit = true
+  }
+  return [...map.values()]
 }
 
 function analyze(profile, mortgageRateStr, mortgageBalance) {
@@ -247,8 +291,6 @@ function Tile({ label, value, sub, color = 'default' }) {
   )
 }
 
-const MONTHS = next12Months()
-
 /* ── Page ────────────────────────────────────────────────────────── */
 export default function PayoffVsInvestPage() {
   const [profile, setProfile] = useState({
@@ -262,6 +304,7 @@ export default function PayoffVsInvestPage() {
   const [customSplit,    setCustomSplit]     = useState(null)
   const [mortgageConfig, setMortgageConfig] = useState(null)
   const [mortgageExtras, setMortgageExtras] = useState(null)
+  const [expanded,       setExpanded]       = useState(new Set())
 
   // Load from localStorage
   useEffect(() => {
@@ -322,6 +365,14 @@ export default function PayoffVsInvestPage() {
     localStorage.removeItem('payoff_vs_invest_split')
   }
 
+  const toggleYear = useCallback((year) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      next.has(year) ? next.delete(year) : next.add(year)
+      return next
+    })
+  }, [])
+
   /* ── Derived ── */
   const mortgageRate    = mortgageConfig?.rate ?? ''
   const mortgageBalance = calcMortgageBalance(mortgageConfig, mortgageExtras)
@@ -333,7 +384,7 @@ export default function PayoffVsInvestPage() {
   const investFrac   = customSplit !== null ? customSplit : (a?.investFrac ?? 0.5)
   const mortgageFrac = 1 - investFrac
 
-  /* Target year plans — derived from mortgage_config's targetYear / targetYear2 */
+  /* Target year plans */
   const target1 = useMemo(
     () => calcRequiredExtra(mortgageConfig, mortgageBalance, mortgageConfig?.targetYear),
     [mortgageConfig, mortgageBalance]
@@ -342,40 +393,97 @@ export default function PayoffVsInvestPage() {
     () => calcRequiredExtra(mortgageConfig, mortgageBalance, mortgageConfig?.targetYear2),
     [mortgageConfig, mortgageBalance]
   )
+  const hasTargets = !!(target1 || target2)
 
-  const plan1 = useMemo(
-    () => target1 ? buildTargetPlan(MONTHS, monthBudgets, defaultBudget, target1.requiredExtra) : null,
-    [target1, monthBudgets, defaultBudget]
-  )
-  const plan2 = useMemo(
-    () => target2 ? buildTargetPlan(MONTHS, monthBudgets, defaultBudget, target2.requiredExtra) : null,
-    [target2, monthBudgets, defaultBudget]
-  )
+  /*
+   * Dynamic month list: spans from today through December of the furthest
+   * relevant year — the later of target1, target2, and standard payoff.
+   * Falls back to 12 months when there's no mortgage.
+   */
+  const MONTHS = useMemo(() => {
+    if (!mortgageConfig?.startDate || !mortgageConfig?.years) return buildMonthList(null)
+    const [startY, startM0] = mortgageConfig.startDate.split('-').map(Number)
+    const stdEnd = startY + parseInt(mortgageConfig.years || 30)
+    const candidates = [stdEnd, target1?.targetY, target2?.targetY].filter(Boolean)
+    const endYear = Math.max(...candidates)
+    return buildMonthList(endYear)
+  }, [mortgageConfig, target1, target2])
 
-  const hasTargets = !!(plan1 || plan2)
+  /*
+   * Unified per-month rows: one entry per MONTHS item, carrying all columns so
+   * grouping by year is straightforward.
+   */
+  const allRows = useMemo(() => {
+    // Build target plans if we have targets
+    let tp1 = null, tp2 = null
+    if (target1) {
+      let carry = 0
+      tp1 = {}
+      for (const ym of MONTHS) {
+        const budget = parseFloat(monthBudgets[ym] || defaultBudget) || 0
+        const needed = Math.round(target1.requiredExtra + carry)
+        let mortgagePaid, invest, newCarry
+        if (budget <= 0)         { mortgagePaid = 0;      invest = 0;            newCarry = needed }
+        else if (budget >= needed) { mortgagePaid = needed; invest = budget - needed; newCarry = 0 }
+        else                     { mortgagePaid = budget; invest = 0;            newCarry = needed - budget }
+        tp1[ym] = { mortgagePaid, invest, carryIn: carry, carryOut: newCarry }
+        carry = newCarry
+      }
+    }
+    if (target2) {
+      let carry = 0
+      tp2 = {}
+      for (const ym of MONTHS) {
+        const budget = parseFloat(monthBudgets[ym] || defaultBudget) || 0
+        const needed = Math.round(target2.requiredExtra + carry)
+        let mortgagePaid, invest, newCarry
+        if (budget <= 0)         { mortgagePaid = 0;      invest = 0;            newCarry = needed }
+        else if (budget >= needed) { mortgagePaid = needed; invest = budget - needed; newCarry = 0 }
+        else                     { mortgagePaid = budget; invest = 0;            newCarry = needed - budget }
+        tp2[ym] = { mortgagePaid, invest, carryIn: carry, carryOut: newCarry }
+        carry = newCarry
+      }
+    }
 
-  /* Standard split totals (used when no target plans, or alongside them) */
-  const totalBudget   = MONTHS.reduce((s, ym) => s + (parseFloat(monthBudgets[ym] || defaultBudget) || 0), 0)
-  const totalMortgage = MONTHS.reduce((s, ym) => {
-    const b = parseFloat(monthBudgets[ym] || defaultBudget) || 0
-    return s + Math.round(b * mortgageFrac)
-  }, 0)
-  const totalInvest = MONTHS.reduce((s, ym) => {
-    const b = parseFloat(monthBudgets[ym] || defaultBudget) || 0
-    const m = Math.round(b * mortgageFrac)
-    return s + (b - m)
-  }, 0)
+    return MONTHS.map(ym => {
+      const budget      = parseFloat(monthBudgets[ym] || defaultBudget) || 0
+      const stdMortgage = Math.round(budget * mortgageFrac)
+      const stdInvest   = budget - stdMortgage
+      const r1 = tp1?.[ym] ?? null
+      const r2 = tp2?.[ym] ?? null
+      return {
+        ym,
+        budget,
+        hasOverride: (ym in monthBudgets) && monthBudgets[ym] !== '',
+        stdMortgage,
+        stdInvest,
+        m1: r1?.mortgagePaid ?? null,
+        i1: r1?.invest       ?? null,
+        carry1In:  r1?.carryIn  ?? 0,
+        carry1Out: r1?.carryOut ?? 0,
+        deficit1:  r1 ? r1.carryIn > 0 : false,
+        m2: r2?.mortgagePaid ?? null,
+        i2: r2?.invest       ?? null,
+        carry2In:  r2?.carryIn  ?? 0,
+        carry2Out: r2?.carryOut ?? 0,
+        deficit2:  r2 ? r2.carryIn > 0 : false,
+      }
+    })
+  }, [MONTHS, monthBudgets, defaultBudget, mortgageFrac, target1, target2])
 
-  /* Target plan totals */
-  const planTotal = (plan) => plan
-    ? plan.reduce((acc, r) => ({
-        mortgage: acc.mortgage + r.mortgagePaid,
-        invest:   acc.invest   + r.invest,
-      }), { mortgage: 0, invest: 0 })
-    : null
+  /* Year-grouped view */
+  const yearGroups = useMemo(() => groupPlanByYear(allRows), [allRows])
 
-  const totals1 = planTotal(plan1)
-  const totals2 = planTotal(plan2)
+  /* Grand totals across all months */
+  const grandTotals = useMemo(() => allRows.reduce((acc, r) => ({
+    budget:      acc.budget      + r.budget,
+    stdMortgage: acc.stdMortgage + r.stdMortgage,
+    stdInvest:   acc.stdInvest   + r.stdInvest,
+    m1: acc.m1 + (r.m1 ?? 0),
+    i1: acc.i1 + (r.i1 ?? 0),
+    m2: acc.m2 + (r.m2 ?? 0),
+    i2: acc.i2 + (r.i2 ?? 0),
+  }), { budget: 0, stdMortgage: 0, stdInvest: 0, m1: 0, i1: 0, m2: 0, i2: 0 }), [allRows])
 
   return (
     <div className="space-y-6">
@@ -634,19 +742,20 @@ export default function PayoffVsInvestPage() {
         </div>
       </div>
 
-      {/* ── Monthly Planner ──────────────────────────────────────────── */}
+      {/* ── Planner ──────────────────────────────────────────────────── */}
       {canAnalyze && (
         <div className="card space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div>
               <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
                 <Wallet size={14} className="text-blue-400" />
-                Monthly Planner
+                Allocation Planner
               </h2>
               <p className="text-xs text-muted mt-0.5">
-                Set a default monthly budget, override individual months for bonuses or lean months,
-                and adjust the split slider to explore different scenarios.
-                {hasTargets && ' Target year columns show the minimum needed to stay on pace, with surplus redirected to investing.'}
+                {hasMortgage
+                  ? `Spanning today through ${MONTHS[MONTHS.length - 1].split('-')[0]} — the full mortgage horizon. Click any year to expand its months.`
+                  : 'Set a default monthly budget and adjust the split slider.'}
+                {hasTargets && ' Target columns show the minimum to stay on pace; surplus reclaimed for investing.'}
               </p>
             </div>
 
@@ -667,11 +776,11 @@ export default function PayoffVsInvestPage() {
 
           {/* Split slider */}
           <div className="bg-white/[0.02] border border-border/50 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <p className="text-xs text-slate-300 flex items-center gap-1.5 font-medium">
                 <SlidersHorizontal size={13} className="text-accent" />
                 Allocation Split
-                {hasTargets && <span className="text-muted font-normal">(used as baseline; target cols cap the mortgage portion)</span>}
+                {hasTargets && <span className="text-muted font-normal text-[10px]">(baseline; target cols cap mortgage)</span>}
               </p>
               {customSplit !== null && (
                 <button
@@ -682,7 +791,6 @@ export default function PayoffVsInvestPage() {
                 </button>
               )}
             </div>
-
             <div className="flex items-center gap-4">
               <span className="text-[10px] text-yellow-400 font-semibold w-16 text-right shrink-0">
                 {Math.round(mortgageFrac * 100)}% mortgage
@@ -696,249 +804,235 @@ export default function PayoffVsInvestPage() {
                 {Math.round(investFrac * 100)}% invest
               </span>
             </div>
-
             <div className="h-2 rounded-full overflow-hidden flex">
               <div className="bg-yellow-500/60 transition-all duration-150" style={{ width: `${mortgageFrac * 100}%` }} />
               <div className="bg-green-500/60 flex-1 transition-all duration-150" />
             </div>
-
             <div className="flex justify-between text-[10px] text-muted">
-              <span>100% Extra Mortgage</span>
-              <span>50 / 50</span>
-              <span>100% Invest</span>
+              <span>100% Extra Mortgage</span><span>50 / 50</span><span>100% Invest</span>
             </div>
           </div>
 
-          {/* Monthly table */}
-          <div className="overflow-x-auto">
+          {/* Year-grouped table */}
+          <div className="card p-0 overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-border/50 text-muted">
-                  <th className="text-left font-normal pb-2 pr-3 whitespace-nowrap">Month</th>
-                  <th className="text-right font-normal pb-2 px-3 whitespace-nowrap">Budget</th>
-
-                  {/* Standard split columns (always shown) */}
-                  <th className="text-right font-normal pb-2 px-3 whitespace-nowrap">
-                    <span className="text-yellow-400">Mortgage</span>
-                    <span className="text-muted ml-1">({Math.round(mortgageFrac * 100)}%)</span>
+                <tr className="border-b border-border text-[11px] text-muted uppercase tracking-wide bg-white/[0.02]">
+                  <th className="w-8 px-3 py-3" />
+                  <th className="px-3 py-3 text-left">Year</th>
+                  <th className="px-3 py-3 text-right">Budget</th>
+                  <th className="px-3 py-3 text-right">
+                    <span className="text-yellow-400/80">Mortgage</span>
+                    <span className="text-muted/60 normal-case ml-1">({Math.round(mortgageFrac * 100)}%)</span>
                   </th>
-                  <th className="text-right font-normal pb-2 px-3 whitespace-nowrap">
-                    <span className="text-green-400">Invest</span>
-                    <span className="text-muted ml-1">({Math.round(investFrac * 100)}%)</span>
+                  <th className="px-3 py-3 text-right">
+                    <span className="text-green-400/80">Invest</span>
+                    <span className="text-muted/60 normal-case ml-1">({Math.round(investFrac * 100)}%)</span>
                   </th>
-
-                  {/* Target #1 columns */}
-                  {plan1 && (
+                  {target1 && (
                     <>
-                      <th className="text-right font-normal pb-2 px-3 whitespace-nowrap border-l border-border/40">
-                        <span className="text-accent">Mtg #1</span>
-                        <span className="text-muted ml-1">(→{target1.targetY})</span>
+                      <th className="px-3 py-3 text-right border-l border-border/40">
+                        <span className="text-accent/80">Mtg #1</span>
+                        <span className="text-muted/60 normal-case ml-1">(→{target1.targetY})</span>
                       </th>
-                      <th className="text-right font-normal pb-2 px-3 whitespace-nowrap">
-                        <span className="text-accent/70">Inv #1</span>
+                      <th className="px-3 py-3 text-right">
+                        <span className="text-accent/60">Inv #1</span>
                       </th>
                     </>
                   )}
-
-                  {/* Target #2 columns */}
-                  {plan2 && (
+                  {target2 && (
                     <>
-                      <th className="text-right font-normal pb-2 px-3 whitespace-nowrap border-l border-border/40">
-                        <span className="text-amber-400">Mtg #2</span>
-                        <span className="text-muted ml-1">(→{target2.targetY})</span>
+                      <th className="px-3 py-3 text-right border-l border-border/40">
+                        <span className="text-amber-400/80">Mtg #2</span>
+                        <span className="text-muted/60 normal-case ml-1">(→{target2.targetY})</span>
                       </th>
-                      <th className="text-right font-normal pb-2 px-3 whitespace-nowrap">
-                        <span className="text-amber-400/70">Inv #2</span>
+                      <th className="px-3 py-3 text-right">
+                        <span className="text-amber-400/60">Inv #2</span>
                       </th>
                     </>
                   )}
-
-                  <th className="text-right font-normal pb-2 pl-3 whitespace-nowrap border-l border-border/40">
-                    Override
-                  </th>
+                  <th className="px-3 py-3 text-right border-l border-border/40 normal-case font-normal">Override</th>
                 </tr>
               </thead>
               <tbody>
-                {MONTHS.map((ym, i) => {
-                  const hasOverride = ym in monthBudgets && monthBudgets[ym] !== ''
-                  const budget      = parseFloat(monthBudgets[ym] || defaultBudget) || 0
-                  const stdMortgage = Math.round(budget * mortgageFrac)
-                  const stdInvest   = budget - stdMortgage
-                  const r1 = plan1?.[i]
-                  const r2 = plan2?.[i]
-                  const hasDeficit = (r1?.deficit && r1.carryIn > 0) || (r2?.deficit && r2.carryIn > 0)
+                {yearGroups.map(yg => (
+                  <Fragment key={yg.year}>
 
-                  return (
-                    <tr key={ym} className={`border-b border-border/25 transition-colors ${
-                      hasDeficit
-                        ? 'bg-red-500/[0.04] hover:bg-red-500/[0.07]'
-                        : 'hover:bg-white/[0.02]'
-                    }`}>
-                      {/* Month */}
-                      <td className="py-2.5 pr-3 text-slate-300 font-medium whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          {hasDeficit && <AlertTriangle size={10} className="text-red-400 shrink-0" />}
-                          {formatMonth(ym)}
-                        </div>
+                    {/* ── Year summary row ── */}
+                    <tr
+                      onClick={() => toggleYear(yg.year)}
+                      className={`border-b border-border/60 cursor-pointer select-none transition-colors ${
+                        yg.hasDeficit
+                          ? 'bg-red-500/[0.04] hover:bg-red-500/[0.07]'
+                          : 'hover:bg-white/[0.03]'
+                      }`}
+                    >
+                      <td className="px-3 py-3 text-muted">
+                        {expanded.has(yg.year) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                       </td>
-
-                      {/* Budget */}
-                      <td className="py-2.5 px-3 text-right">
-                        <span className={`mono font-medium ${hasOverride ? 'text-accent' : 'text-slate-400'}`}>
-                          {budget > 0 ? usd(budget) : <span className="text-muted/50">—</span>}
-                        </span>
-                        {hasOverride && (
-                          <span className="ml-1 text-[9px] text-accent uppercase tracking-wide">custom</span>
-                        )}
+                      <td className="px-3 py-3 font-semibold text-slate-200 flex items-center gap-1.5">
+                        {yg.hasDeficit && <AlertTriangle size={10} className="text-red-400 shrink-0" />}
+                        {yg.year}
                       </td>
-
-                      {/* Standard split */}
-                      <td className="py-2.5 px-3 text-right">
-                        <span className="mono text-yellow-400">
-                          {budget > 0 ? usd(stdMortgage) : <span className="text-muted/50">—</span>}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <span className="mono text-green-400">
-                          {budget > 0 ? usd(stdInvest) : <span className="text-muted/50">—</span>}
-                        </span>
-                      </td>
-
-                      {/* Target #1 */}
-                      {plan1 && r1 && (
+                      <td className="px-3 py-3 text-right mono text-slate-400">{yg.budget > 0 ? usd(yg.budget) : <span className="text-muted/40">—</span>}</td>
+                      <td className="px-3 py-3 text-right mono text-yellow-400">{yg.budget > 0 ? usd(yg.stdMortgage) : <span className="text-muted/40">—</span>}</td>
+                      <td className="px-3 py-3 text-right mono text-green-400">{yg.budget > 0 ? usd(yg.stdInvest) : <span className="text-muted/40">—</span>}</td>
+                      {target1 && (
                         <>
-                          <td className="py-2.5 px-3 text-right border-l border-border/40">
-                            <div className="flex flex-col items-end gap-0.5">
-                              <span className={`mono ${r1.carryOut > 0 ? 'text-red-400' : 'text-accent'}`}>
-                                {budget > 0 ? usd(r1.mortgagePaid) : <span className="text-muted/50">—</span>}
-                              </span>
-                              {r1.carryIn > 0 && (
-                                <span className="text-[9px] text-red-400/80">+{usd(r1.carryIn)} deficit</span>
-                              )}
-                              {r1.carryOut > 0 && (
-                                <span className="text-[9px] text-red-400/80">{usd(r1.carryOut)} short</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
-                            <span className="mono text-accent/70">
-                              {budget > 0 ? usd(r1.invest) : <span className="text-muted/50">—</span>}
-                            </span>
-                          </td>
+                          <td className="px-3 py-3 text-right mono text-accent border-l border-border/40">{yg.budget > 0 ? usd(yg.m1) : <span className="text-muted/40">—</span>}</td>
+                          <td className="px-3 py-3 text-right mono text-accent/70">{yg.budget > 0 ? usd(yg.i1) : <span className="text-muted/40">—</span>}</td>
                         </>
                       )}
-
-                      {/* Target #2 */}
-                      {plan2 && r2 && (
+                      {target2 && (
                         <>
-                          <td className="py-2.5 px-3 text-right border-l border-border/40">
-                            <div className="flex flex-col items-end gap-0.5">
-                              <span className={`mono ${r2.carryOut > 0 ? 'text-red-400' : 'text-amber-400'}`}>
-                                {budget > 0 ? usd(r2.mortgagePaid) : <span className="text-muted/50">—</span>}
-                              </span>
-                              {r2.carryIn > 0 && (
-                                <span className="text-[9px] text-red-400/80">+{usd(r2.carryIn)} deficit</span>
-                              )}
-                              {r2.carryOut > 0 && (
-                                <span className="text-[9px] text-red-400/80">{usd(r2.carryOut)} short</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
-                            <span className="mono text-amber-400/70">
-                              {budget > 0 ? usd(r2.invest) : <span className="text-muted/50">—</span>}
-                            </span>
-                          </td>
+                          <td className="px-3 py-3 text-right mono text-amber-400 border-l border-border/40">{yg.budget > 0 ? usd(yg.m2) : <span className="text-muted/40">—</span>}</td>
+                          <td className="px-3 py-3 text-right mono text-amber-400/70">{yg.budget > 0 ? usd(yg.i2) : <span className="text-muted/40">—</span>}</td>
                         </>
                       )}
-
-                      {/* Override input */}
-                      <td className="py-2.5 pl-3 text-right border-l border-border/40">
-                        <div className="relative inline-flex">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">$</span>
-                          <input
-                            type="number" min="0" step="50"
-                            value={monthBudgets[ym] ?? ''}
-                            onChange={e => updateMonthBudget(ym, e.target.value)}
-                            placeholder={defaultBudget || '—'}
-                            className="w-24 bg-surface border border-border/60 rounded px-2 py-1 text-xs mono focus:outline-none focus:border-accent transition-colors pl-5 text-right"
-                          />
-                        </div>
-                      </td>
+                      <td className="px-3 py-3 border-l border-border/40" />
                     </tr>
-                  )
-                })}
+
+                    {/* ── Month detail rows ── */}
+                    {expanded.has(yg.year) && (
+                      <tr className="border-b border-border/20">
+                        <td colSpan={5 + (target1 ? 2 : 0) + (target2 ? 2 : 0) + 1} className="p-0">
+                          <table className="w-full text-xs bg-white/[0.015]">
+                            <tbody>
+                              {yg.rows.map(r => {
+                                const rowDeficit = r.deficit1 || r.deficit2
+                                return (
+                                  <tr key={r.ym} className={`border-b border-border/20 transition-colors ${
+                                    rowDeficit ? 'bg-red-500/[0.04]' : 'hover:bg-white/[0.02]'
+                                  }`}>
+                                    <td className="w-8" />
+                                    {/* Month name */}
+                                    <td className="px-3 py-2 pl-10 text-slate-300 whitespace-nowrap">
+                                      <div className="flex items-center gap-1.5">
+                                        {rowDeficit && <AlertTriangle size={9} className="text-red-400 shrink-0" />}
+                                        {formatMonth(r.ym)}
+                                      </div>
+                                    </td>
+                                    {/* Budget */}
+                                    <td className="px-3 py-2 text-right">
+                                      <span className={`mono ${r.hasOverride ? 'text-accent' : 'text-slate-400'}`}>
+                                        {r.budget > 0 ? usd(r.budget) : <span className="text-muted/40">—</span>}
+                                      </span>
+                                      {r.hasOverride && <span className="ml-1 text-[9px] text-accent uppercase">custom</span>}
+                                    </td>
+                                    {/* Standard split */}
+                                    <td className="px-3 py-2 text-right mono text-yellow-400/80">
+                                      {r.budget > 0 ? usd(r.stdMortgage) : <span className="text-muted/40">—</span>}
+                                    </td>
+                                    <td className="px-3 py-2 text-right mono text-green-400/80">
+                                      {r.budget > 0 ? usd(r.stdInvest) : <span className="text-muted/40">—</span>}
+                                    </td>
+                                    {/* Target #1 */}
+                                    {target1 && (
+                                      <>
+                                        <td className="px-3 py-2 text-right border-l border-border/40">
+                                          <div className="flex flex-col items-end gap-0.5">
+                                            <span className={`mono ${r.carry1Out > 0 ? 'text-red-400' : 'text-accent/80'}`}>
+                                              {r.budget > 0 ? usd(r.m1 ?? 0) : <span className="text-muted/40">—</span>}
+                                            </span>
+                                            {r.carry1In > 0 && <span className="text-[9px] text-red-400/70">+{usd(r.carry1In)} carried in</span>}
+                                            {r.carry1Out > 0 && <span className="text-[9px] text-red-400/70">{usd(r.carry1Out)} short</span>}
+                                          </div>
+                                        </td>
+                                        <td className="px-3 py-2 text-right mono text-accent/60">
+                                          {r.budget > 0 ? usd(r.i1 ?? 0) : <span className="text-muted/40">—</span>}
+                                        </td>
+                                      </>
+                                    )}
+                                    {/* Target #2 */}
+                                    {target2 && (
+                                      <>
+                                        <td className="px-3 py-2 text-right border-l border-border/40">
+                                          <div className="flex flex-col items-end gap-0.5">
+                                            <span className={`mono ${r.carry2Out > 0 ? 'text-red-400' : 'text-amber-400/80'}`}>
+                                              {r.budget > 0 ? usd(r.m2 ?? 0) : <span className="text-muted/40">—</span>}
+                                            </span>
+                                            {r.carry2In > 0 && <span className="text-[9px] text-red-400/70">+{usd(r.carry2In)} carried in</span>}
+                                            {r.carry2Out > 0 && <span className="text-[9px] text-red-400/70">{usd(r.carry2Out)} short</span>}
+                                          </div>
+                                        </td>
+                                        <td className="px-3 py-2 text-right mono text-amber-400/60">
+                                          {r.budget > 0 ? usd(r.i2 ?? 0) : <span className="text-muted/40">—</span>}
+                                        </td>
+                                      </>
+                                    )}
+                                    {/* Override input */}
+                                    <td className="px-3 py-2 text-right border-l border-border/40">
+                                      <div className="relative inline-flex">
+                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">$</span>
+                                        <input
+                                          type="number" min="0" step="50"
+                                          value={monthBudgets[r.ym] ?? ''}
+                                          onChange={e => updateMonthBudget(r.ym, e.target.value)}
+                                          placeholder={defaultBudget || '—'}
+                                          className="w-24 bg-surface border border-border/60 rounded px-2 py-1 text-xs mono focus:outline-none focus:border-accent transition-colors pl-5 text-right"
+                                        />
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+
+                  </Fragment>
+                ))}
               </tbody>
 
-              {/* Totals */}
-              {totalBudget > 0 && (
+              {/* Grand totals footer */}
+              {grandTotals.budget > 0 && (
                 <tfoot>
-                  <tr className="border-t border-border/60">
-                    <td className="pt-3 pr-3 text-slate-400 font-semibold text-xs whitespace-nowrap">12-Mo Total</td>
-                    <td className="pt-3 px-3 text-right">
-                      <span className="mono text-sm font-bold text-slate-300">{usd(totalBudget)}</span>
-                    </td>
-                    <td className="pt-3 px-3 text-right">
-                      <span className="mono text-sm font-bold text-yellow-400">{usd(totalMortgage)}</span>
-                    </td>
-                    <td className="pt-3 px-3 text-right">
-                      <span className="mono text-sm font-bold text-green-400">{usd(totalInvest)}</span>
-                    </td>
-                    {plan1 && totals1 && (
+                  <tr className="border-t-2 border-border/60 bg-white/[0.02]">
+                    <td className="px-3 py-3" />
+                    <td className="px-3 py-3 text-slate-400 font-semibold text-xs whitespace-nowrap">Total</td>
+                    <td className="px-3 py-3 text-right mono font-bold text-slate-300">{usd(grandTotals.budget)}</td>
+                    <td className="px-3 py-3 text-right mono font-bold text-yellow-400">{usd(grandTotals.stdMortgage)}</td>
+                    <td className="px-3 py-3 text-right mono font-bold text-green-400">{usd(grandTotals.stdInvest)}</td>
+                    {target1 && (
                       <>
-                        <td className="pt-3 px-3 text-right border-l border-border/40">
-                          <span className="mono text-sm font-bold text-accent">{usd(totals1.mortgage)}</span>
-                        </td>
-                        <td className="pt-3 px-3 text-right">
-                          <span className="mono text-sm font-bold text-accent/70">{usd(totals1.invest)}</span>
-                        </td>
+                        <td className="px-3 py-3 text-right mono font-bold text-accent border-l border-border/40">{usd(grandTotals.m1)}</td>
+                        <td className="px-3 py-3 text-right mono font-bold text-accent/70">{usd(grandTotals.i1)}</td>
                       </>
                     )}
-                    {plan2 && totals2 && (
+                    {target2 && (
                       <>
-                        <td className="pt-3 px-3 text-right border-l border-border/40">
-                          <span className="mono text-sm font-bold text-amber-400">{usd(totals2.mortgage)}</span>
-                        </td>
-                        <td className="pt-3 px-3 text-right">
-                          <span className="mono text-sm font-bold text-amber-400/70">{usd(totals2.invest)}</span>
-                        </td>
+                        <td className="px-3 py-3 text-right mono font-bold text-amber-400 border-l border-border/40">{usd(grandTotals.m2)}</td>
+                        <td className="px-3 py-3 text-right mono font-bold text-amber-400/70">{usd(grandTotals.i2)}</td>
                       </>
                     )}
                     <td className="border-l border-border/40" />
                   </tr>
-
-                  {/* Invest gain comparison row when targets exist */}
-                  {hasTargets && (totals1 || totals2) && (
+                  {/* Invest delta vs standard split */}
+                  {hasTargets && (
                     <tr>
-                      <td colSpan={4} className="pt-1 pr-3 pb-1 text-[10px] text-muted">
-                        vs. standard split — invest delta:
-                      </td>
-                      {plan1 && totals1 && (
+                      <td className="px-3 pb-2" />
+                      <td className="px-3 pb-2 text-[10px] text-muted" colSpan={3}>invest delta vs. standard split →</td>
+                      <td />
+                      {target1 && (
                         <>
-                          <td className="pt-1 px-3 text-right border-l border-border/40" />
-                          <td className="pt-1 px-3 text-right pb-1">
+                          <td className="px-3 pb-2 text-right border-l border-border/40" />
+                          <td className="px-3 pb-2 text-right">
                             {(() => {
-                              const delta = totals1.invest - totalInvest
-                              return (
-                                <span className={`mono text-xs font-semibold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                  {delta >= 0 ? '+' : '−'}{usd(Math.abs(delta))}
-                                </span>
-                              )
+                              const d = grandTotals.i1 - grandTotals.stdInvest
+                              return <span className={`mono text-xs font-semibold ${d >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d >= 0 ? '+' : '−'}{usd(Math.abs(d))}</span>
                             })()}
                           </td>
                         </>
                       )}
-                      {plan2 && totals2 && (
+                      {target2 && (
                         <>
-                          <td className="pt-1 px-3 text-right border-l border-border/40" />
-                          <td className="pt-1 px-3 text-right pb-1">
+                          <td className="px-3 pb-2 text-right border-l border-border/40" />
+                          <td className="px-3 pb-2 text-right">
                             {(() => {
-                              const delta = totals2.invest - totalInvest
-                              return (
-                                <span className={`mono text-xs font-semibold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                  {delta >= 0 ? '+' : '−'}{usd(Math.abs(delta))}
-                                </span>
-                              )
+                              const d = grandTotals.i2 - grandTotals.stdInvest
+                              return <span className={`mono text-xs font-semibold ${d >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d >= 0 ? '+' : '−'}{usd(Math.abs(d))}</span>
                             })()}
                           </td>
                         </>
@@ -953,20 +1047,12 @@ export default function PayoffVsInvestPage() {
 
           {/* Legend */}
           <div className="flex flex-wrap gap-4 text-[10px] text-muted">
-            {(parseFloat(defaultBudget) > 0 || Object.keys(monthBudgets).length > 0) && (
-              <span>Months with a <span className="text-accent">blue "custom"</span> label use a per-month override.</span>
-            )}
+            <span>Click a year row to expand · months with a <span className="text-accent">blue "custom"</span> label use a per-month budget override.</span>
             {hasTargets && (
-              <>
-                <span>
-                  <span className="text-accent font-medium">Mtg #1</span> / <span className="text-amber-400 font-medium">Mtg #2</span>
-                  {' '}= minimum to stay on pace for each target year; surplus beyond that goes to invest.
-                </span>
-                <span className="flex items-center gap-1">
-                  <AlertTriangle size={9} className="text-red-400" />
-                  Red rows = month is under-funded; shortfall carries forward to the next month.
-                </span>
-              </>
+              <span className="flex items-center gap-1">
+                <AlertTriangle size={9} className="text-red-400" />
+                Red = under-funded month; shortfall carries forward to the next month's required amount.
+              </span>
             )}
           </div>
         </div>
