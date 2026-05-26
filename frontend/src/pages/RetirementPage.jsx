@@ -151,11 +151,12 @@ function AddTickerRow({ onAdd }) {
 
 /* ── Account banner ───────────────────────────────────────────────── */
 function AccountBanner({ account, onSave, onDelete, divSnapshots, onAddTicker }) {
-  const [expanded, setExpanded]   = useState(false)
-  const [editing,  setEditing]    = useState(false)
-  const [name,     setName]       = useState(account.name)
-  const [value,    setValue]      = useState(String(account.value))
-  const [saving,   setSaving]     = useState(false)
+  const [expanded,       setExpanded]       = useState(false)
+  const [editing,        setEditing]        = useState(false)
+  const [name,           setName]           = useState(account.name)
+  const [value,          setValue]          = useState(String(account.value))
+  const [saving,         setSaving]         = useState(false)
+  const [localSnapshots, setLocalSnapshots] = useState({}) // tickers added this session
   const nameRef = useRef(null)
 
   // Per-account dividend holdings: symbol → shares
@@ -163,6 +164,26 @@ function AccountBanner({ account, onSave, onDelete, divSnapshots, onAddTicker })
 
   // Symbols that have been added (in order)
   const symbols = Object.keys(holdings)
+
+  // Merge page-level snapshots with locally-added ones (local takes precedence)
+  const snapshots = { ...divSnapshots, ...localSnapshots }
+
+  // On mount, fetch snapshot data for any holdings already saved in localStorage
+  // that aren't in the page-level divSnapshots (e.g. after a page reload)
+  useEffect(() => {
+    const missing = symbols.filter(sym => !divSnapshots[sym])
+    if (missing.length === 0) return
+    Promise.allSettled(missing.map(sym => api.lookupDividendTicker(sym)))
+      .then(results => {
+        const fetched = {}
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled') fetched[missing[i]] = r.value
+        })
+        if (Object.keys(fetched).length > 0)
+          setLocalSnapshots(prev => ({ ...prev, ...fetched }))
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // run once on mount only
 
   const startEdit = (e) => {
     e.stopPropagation()
@@ -213,6 +234,8 @@ function AccountBanner({ account, onSave, onDelete, divSnapshots, onAddTicker })
   }, [account.id])
 
   const handleAddTicker = useCallback((sym, data) => {
+    // Store locally so this banner re-renders immediately with the data
+    setLocalSnapshots(prev => ({ ...prev, [sym]: data }))
     setHoldings(prev => {
       if (sym in prev) return prev
       const next = { ...prev, [sym]: 0 }
@@ -224,9 +247,9 @@ function AccountBanner({ account, onSave, onDelete, divSnapshots, onAddTicker })
 
   // Compute annual div income for this account
   const annualIncome = symbols.reduce((sum, sym) => {
-    const data   = divSnapshots[sym]
+    const snap   = snapshots[sym]
     const shares = holdings[sym] ?? 0
-    return sum + (data?.annual_dividend ?? 0) * shares
+    return sum + (snap?.annual_dividend ?? 0) * shares
   }, 0)
 
   /* ── Edit mode ── */
@@ -345,7 +368,7 @@ function AccountBanner({ account, onSave, onDelete, divSnapshots, onAddTicker })
             <DividendRow
               key={sym}
               symbol={sym}
-              data={divSnapshots[sym]}
+              data={snapshots[sym]}
               shares={holdings[sym] ?? 0}
               onSharesChange={updateShares}
               onRemove={removeTicker}
