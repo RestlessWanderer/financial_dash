@@ -482,17 +482,43 @@ export default function RetirementPage() {
       api.getRetirementAccounts(),
       api.getDividends(),
     ]).then(([accRes, divRes]) => {
-      if (accRes.status === 'fulfilled') setAccounts(accRes.value)
+      const fetchedAccounts = accRes.status === 'fulfilled' ? accRes.value : []
+      if (accRes.status === 'fulfilled') setAccounts(fetchedAccounts)
       else setError(accRes.reason?.message ?? 'Failed to load accounts')
 
       // Build a symbol → snapshot map for quick lookup in AccountBanner
+      const baseMap = {}
       if (divRes.status === 'fulfilled') {
-        const map = {}
-        for (const s of divRes.value?.stocks ?? []) map[s.symbol] = s
-        setDivSnapshots(map)
+        for (const s of divRes.value?.stocks ?? []) baseMap[s.symbol] = s
       }
 
+      // Also fetch snapshots for any retirement div holdings already in localStorage
+      // so the page-level totalDivIncome is correct on mount
+      const allRetirementSymbols = new Set()
+      for (const acc of fetchedAccounts) {
+        const holdings = loadAccountDivs(acc.id)
+        for (const sym of Object.keys(holdings)) {
+          if (!baseMap[sym]) allRetirementSymbols.add(sym)
+        }
+      }
+
+      // Set base map immediately, then merge missing retirement tickers in async
+      setDivSnapshots(baseMap)
       setLoading(false)
+
+      if (allRetirementSymbols.size > 0) {
+        const missing = [...allRetirementSymbols]
+        Promise.allSettled(missing.map(sym => api.lookupDividendTicker(sym)))
+          .then(results => {
+            setDivSnapshots(prev => {
+              const next = { ...prev }
+              results.forEach((r, i) => {
+                if (r.status === 'fulfilled') next[missing[i]] = r.value
+              })
+              return next
+            })
+          })
+      }
     })
   }, [])
 
