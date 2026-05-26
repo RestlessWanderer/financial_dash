@@ -66,7 +66,7 @@ function calcDividendIncome(holdings, stocks) {
 }
 
 /* ── Section card ────────────────────────────────────────────────── */
-function SectionCard({ to, icon: Icon, iconClass, title, primary, primaryLabel, rows = [], loading }) {
+function SectionCard({ to, icon: Icon, iconClass, title, primary, primaryLabel, rows = [], loading, primaryClass = 'text-emerald-400' }) {
   return (
     <Link to={to}
       className="card group flex flex-col gap-3 hover:border-accent/30 transition-colors cursor-pointer">
@@ -85,7 +85,7 @@ function SectionCard({ to, icon: Icon, iconClass, title, primary, primaryLabel, 
       {loading ? (
         <div className="h-8 w-24 rounded bg-white/5 animate-pulse" />
       ) : (
-        <p className="mono text-2xl font-bold text-slate-200 leading-none">
+        <p className={`mono text-2xl font-bold leading-none ${primaryClass}`}>
           {primary ?? '—'}
         </p>
       )}
@@ -106,22 +106,21 @@ function SectionCard({ to, icon: Icon, iconClass, title, primary, primaryLabel, 
   )
 }
 
-/* ── Net worth breakdown row ─────────────────────────────────────── */
-function NWRow({ label, value, sign = '+', muted = false, total = false }) {
-  const cls = total
-    ? (value >= 0 ? 'text-green-400' : 'text-red-400')
-    : sign === '−'
-    ? 'text-red-400/80'
-    : 'text-slate-300'
+/* ── Net worth mini-card ─────────────────────────────────────────── */
+function NWMiniCard({ label, value, sign = '+', liability = false, loading = false }) {
+  const isNeg = liability || sign === '−'
+  const valCls = isNeg ? 'text-rose-400' : 'text-emerald-400'
 
   return (
-    <div className={`flex items-baseline justify-between gap-4 ${total ? 'border-t border-border pt-3 mt-1' : ''}`}>
-      <span className={`text-xs ${total ? 'font-semibold text-slate-200' : muted ? 'text-muted' : 'text-slate-400'}`}>
-        {label}
-      </span>
-      <span className={`mono text-sm font-semibold ${cls}`}>
-        {value == null ? '—' : `${total ? (value >= 0 ? '' : '−') : sign}${usd(Math.abs(value))}`}
-      </span>
+    <div className="bg-white/[0.03] border border-border/50 rounded-xl px-3 py-2.5 flex flex-col gap-1">
+      <span className="text-[10px] text-slate-300 uppercase tracking-wider font-bold leading-none">{label}</span>
+      {loading ? (
+        <div className="h-5 w-20 rounded bg-white/5 animate-pulse mt-0.5" />
+      ) : (
+        <span className={`mono text-sm font-semibold leading-none ${valCls}`}>
+          {value == null ? '—' : `${sign}${usd(Math.abs(value))}`}
+        </span>
+      )}
     </div>
   )
 }
@@ -273,7 +272,7 @@ export default function DashboardPage() {
 
           {/* Big number */}
           <div className="shrink-0">
-            <p className="text-[10px] text-muted uppercase tracking-widest mb-2 flex items-center gap-1.5">
+            <p className="text-[10px] text-slate-300 uppercase tracking-widest font-bold mb-2 flex items-center gap-1.5">
               {nwReady && (netWorth >= 0
                 ? <TrendingUp size={11} className="text-green-400" />
                 : <TrendingDown size={11} className="text-red-400" />
@@ -289,23 +288,88 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Breakdown */}
-          <div className="flex-1 sm:border-l sm:border-border/50 sm:pl-6 space-y-1.5">
-            <p className="text-[10px] text-muted uppercase tracking-widest mb-2">Breakdown</p>
-
-            <NWRow label="Retirement Accounts" value={loading ? null : retirementTotal} sign="+" />
-            <NWRow label="Work Stock Plans"    value={loading ? null : workStockTotal}  sign="+" />
-            <NWRow label="Brokerage Accounts"  value={loading ? null : brokerageTotal}  sign="+" />
-            <NWRow label="Liquid Assets"       value={loading ? null : liquidTotal}     sign="+" />
-            <NWRow label="Physical Asset Values" value={loading ? null : assetValue}   sign="+" />
-            <NWRow label="Physical Asset Debts"  value={loading ? null : assetDebt}    sign="−" />
-            {hasMortgage && (
-              <NWRow label="Mortgage Balance"  value={loading ? null : mortgageBalance} sign="−" />
-            )}
-            <NWRow label="Net Worth"           value={loading ? null : netWorth}        total />
+          {/* Breakdown mini-cards */}
+          <div className="flex-1 sm:border-l sm:border-border/50 sm:pl-6">
+            <p className="text-[10px] text-slate-300 uppercase tracking-widest font-bold mb-3">Breakdown</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <NWMiniCard label="Retirement"      value={retirementTotal} sign="+"  loading={loading} />
+              <NWMiniCard label="Work Stock"       value={workStockTotal}  sign="+"  loading={loading} />
+              <NWMiniCard label="Brokerage"        value={brokerageTotal}  sign="+"  loading={loading} />
+              <NWMiniCard label="Liquid Assets"    value={liquidTotal}     sign="+"  loading={loading} />
+              <NWMiniCard label="Physical Assets"  value={assetValue}      sign="+"  loading={loading} />
+              <NWMiniCard label="Asset Debt"       value={assetDebt}       sign="−"  loading={loading} liability />
+              {hasMortgage && (
+                <NWMiniCard label="Mortgage"       value={mortgageBalance} sign="−"  loading={loading} liability />
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* ── Dividend Income banner ────────────────────────────────── */}
+      <Link to="/dividends"
+        className="card group border border-emerald-500/20 bg-emerald-500/[0.04] hover:border-emerald-500/40 transition-colors cursor-pointer block">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+
+          {/* Big number */}
+          <div className="shrink-0">
+            <p className="text-[10px] text-slate-300 uppercase tracking-widest font-bold mb-2 flex items-center gap-1.5">
+              <Landmark size={11} className="text-emerald-400" />
+              Dividend Income
+            </p>
+            {loading ? (
+              <div className="h-14 w-48 rounded bg-white/5 animate-pulse" />
+            ) : (
+              <p className="mono text-5xl font-bold leading-none text-emerald-400">
+                {projectedIncome != null ? `${usd(projectedIncome)}/yr` : '—'}
+              </p>
+            )}
+            {!loading && projectedIncome != null && (
+              <p className="text-xs text-muted mt-2">{usd(projectedIncome / 12)}/mo projected · from owned shares</p>
+            )}
+          </div>
+
+          {/* Progress + milestone chips */}
+          <div className="flex-1 sm:border-l sm:border-border/50 sm:pl-6 space-y-3">
+            <p className="text-[10px] text-slate-300 uppercase tracking-widest font-bold">Goal Progress — $100,000 / yr</p>
+
+            {/* Progress bar */}
+            <div className="space-y-1.5">
+              <div className="h-2.5 rounded-full bg-white/[0.06] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-emerald-500/70 transition-all duration-500"
+                  style={{ width: `${Math.min(100, divProgress ?? 0)}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-muted">
+                <span>{(divProgress ?? 0).toFixed(1)}% complete</span>
+                <span>{projectedIncome != null ? `${usd(100_000 - projectedIncome)} remaining` : '—'}</span>
+              </div>
+            </div>
+
+            {/* Milestone chips */}
+            <div className="grid grid-cols-4 gap-2">
+              {[25_000, 50_000, 75_000, 100_000].map(milestone => {
+                const reached = (projectedIncome ?? 0) >= milestone
+                return (
+                  <div key={milestone}
+                    className={`rounded-xl px-3 py-2 border text-center transition-colors ${
+                      reached
+                        ? 'bg-emerald-500/10 border-emerald-500/30'
+                        : 'bg-white/[0.02] border-border/40'
+                    }`}>
+                    <p className={`text-[10px] font-bold uppercase tracking-wider ${reached ? 'text-emerald-400' : 'text-muted'}`}>
+                      {reached ? '✓' : ''} ${milestone / 1000}K
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <ArrowRight size={16} className="text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0 self-center" />
+        </div>
+      </Link>
 
       {/* ── Section cards grid ───────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -392,6 +456,7 @@ export default function DashboardPage() {
           title="Mortgage"
           primary={hasMortgage ? usd(mortgageBalance) : 'Not set up'}
           primaryLabel={hasMortgage ? 'remaining balance' : null}
+          primaryClass={hasMortgage ? 'text-rose-400' : 'text-slate-400'}
           loading={false}
           rows={hasMortgage ? [
             ['Original loan',    usd(parseFloat(mortgageConfig?.principal)), 'text-slate-300'],
@@ -400,22 +465,8 @@ export default function DashboardPage() {
           ] : []}
         />
 
-        {/* Dividends */}
-        <SectionCard
-          to="/dividends"
-          icon={Landmark}
-          iconClass="bg-green-500/10 text-green-400"
-          title="Dividend Income"
-          primary={projectedIncome != null ? `${usd(projectedIncome)}/yr` : '—'}
-          primaryLabel="projected annual income from owned shares"
-          loading={loading}
-          rows={divProgress != null ? [
-            ['Goal ($100K/yr)', `${divProgress.toFixed(1)}% complete`, divProgress >= 100 ? 'text-green-400' : 'text-yellow-400'],
-            ['Monthly',         projectedIncome != null ? `${usd(projectedIncome / 12)}/mo` : '—', 'text-slate-300'],
-          ] : []}
-        />
-
       </div>
+
     </div>
   )
 }

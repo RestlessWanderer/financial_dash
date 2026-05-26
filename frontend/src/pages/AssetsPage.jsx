@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
-import { Plus, Pencil, Trash2, Check } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X } from 'lucide-react'
 
 function usd(n, dec = 0) {
   return (n ?? 0).toLocaleString('en-US', {
@@ -9,19 +9,10 @@ function usd(n, dec = 0) {
   })
 }
 
-function timeAgo(iso) {
-  if (!iso) return null
-  const mins = Math.round((Date.now() - new Date(iso + 'Z').getTime()) / 60_000)
-  if (mins < 1)  return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const h = Math.round(mins / 60)
-  return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`
-}
-
 const INPUT = 'w-full bg-surface border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent transition-colors'
 
-/* ── Asset card ──────────────────────────────────────────────────── */
-function AssetCard({ asset, onSave, onDelete }) {
+/* ── Asset row ───────────────────────────────────────────────────── */
+function AssetRow({ asset, onSave, onDelete }) {
   const [editing, setEditing] = useState(false)
   const [name,    setName]    = useState(asset.name)
   const [value,   setValue]   = useState(String(asset.value))
@@ -53,96 +44,93 @@ function AssetCard({ asset, onSave, onDelete }) {
 
   const kd = (e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }
 
+  const equity = asset.value - asset.debt
+
   if (editing) {
     return (
-      <div className="card border-accent/40 bg-accent/[0.04] flex flex-col gap-3">
-        <input ref={nameRef} value={name}
-          onChange={e => setName(e.target.value)} onKeyDown={kd}
-          placeholder="Asset name (e.g. 2022 Honda Civic)"
-          className={INPUT}
-        />
-        <div className="space-y-2">
-          <div className="space-y-1">
-            <label className="text-[10px] text-muted uppercase tracking-wider">Current Value</label>
-            <div className="relative">
+      <div className="px-4 py-3 border-b border-border/60 bg-accent/[0.03]">
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+          <input ref={nameRef} value={name}
+            onChange={e => setName(e.target.value)} onKeyDown={kd}
+            placeholder="Asset name"
+            className={INPUT + ' sm:flex-1'}
+          />
+          <div className="flex gap-3 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-36">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none">$</span>
               <input type="number" min="0" step="100" value={value}
                 onChange={e => setValue(e.target.value)} onKeyDown={kd}
-                placeholder="0"
+                placeholder="Value"
                 className={INPUT + ' pl-6'}
               />
             </div>
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] text-muted uppercase tracking-wider">Current Debt</label>
-            <div className="relative">
+            <div className="relative flex-1 sm:w-36">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none">$</span>
               <input type="number" min="0" step="100" value={debt}
                 onChange={e => setDebt(e.target.value)} onKeyDown={kd}
-                placeholder="0"
+                placeholder="Debt"
                 className={INPUT + ' pl-6'}
               />
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={save} disabled={saving || !name.trim()}
-            className="flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40">
-            <Check size={12} /> {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button onClick={cancel} className="text-xs text-muted hover:text-slate-200 px-2 py-1.5 transition-colors">
-            Cancel
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={save} disabled={saving || !name.trim()}
+              className="flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40">
+              <Check size={12} /> {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button onClick={cancel} className="p-1.5 text-muted hover:text-slate-200 transition-colors">
+              <X size={14} />
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
-  const equity = asset.value - asset.debt
-  const equityPositive = equity >= 0
-
   return (
-    <div className="card group flex flex-col gap-3">
-      {/* Name + actions */}
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs text-muted uppercase tracking-widest truncate">{asset.name}</p>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <button onClick={startEdit} className="p-1 text-muted hover:text-slate-200 transition-colors" title="Edit">
-            <Pencil size={13} />
-          </button>
-          <button onClick={() => onDelete(asset.id)} className="p-1 text-muted hover:text-rose-400 transition-colors" title="Delete">
-            <Trash2 size={13} />
-          </button>
-        </div>
+    <div className="group flex items-center gap-4 px-4 py-3 border-b border-border/40 hover:bg-white/[0.02] transition-colors">
+      {/* Name */}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-200 truncate">{asset.name}</p>
       </div>
 
-      {/* Value & debt */}
-      <div className="space-y-1.5">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[10px] text-muted uppercase tracking-wider">Value</span>
-          <span className="mono text-lg font-semibold text-slate-200">{usd(asset.value)}</span>
-        </div>
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[10px] text-muted uppercase tracking-wider">Debt</span>
-          <span className={`mono text-lg font-semibold ${asset.debt > 0 ? 'text-rose-400' : 'text-slate-200'}`}>{usd(asset.debt)}</span>
-        </div>
+      {/* Value */}
+      <div className="text-right w-32 shrink-0">
+        <p className="text-[10px] text-muted uppercase tracking-wider">Value</p>
+        <p className="mono text-sm font-semibold text-slate-200">{usd(asset.value)}</p>
       </div>
 
-      {/* Divider + equity */}
-      <div className="border-t border-border/60 pt-2.5 flex items-baseline justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-wider font-semibold text-muted">Equity</span>
-        <span className={`mono text-xl font-bold ${equityPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-          {equityPositive ? '' : '−'}{usd(Math.abs(equity))}
-        </span>
+      {/* Debt */}
+      <div className="text-right w-32 shrink-0">
+        <p className="text-[10px] text-muted uppercase tracking-wider">Debt</p>
+        <p className={`mono text-sm font-semibold ${asset.debt > 0 ? 'text-rose-400' : 'text-slate-200'}`}>
+          {usd(asset.debt)}
+        </p>
       </div>
 
-      <p className="text-[10px] text-muted -mt-1">Updated {timeAgo(asset.updated_at)}</p>
+      {/* Equity */}
+      <div className="text-right w-36 shrink-0 border-l border-border/50 pl-4">
+        <p className="text-[10px] text-muted uppercase tracking-wider">Equity</p>
+        <p className={`mono text-sm font-semibold ${equity >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+          {equity >= 0 ? '' : '−'}{usd(Math.abs(equity))}
+        </p>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+        <button onClick={startEdit} className="p-1.5 text-muted hover:text-slate-200 transition-colors" title="Edit">
+          <Pencil size={13} />
+        </button>
+        <button onClick={() => onDelete(asset.id)} className="p-1.5 text-muted hover:text-rose-400 transition-colors" title="Delete">
+          <Trash2 size={13} />
+        </button>
+      </div>
     </div>
   )
 }
 
-/* ── Add card ────────────────────────────────────────────────────── */
-function AddAssetCard({ onAdd }) {
+/* ── Add row ─────────────────────────────────────────────────────── */
+function AddAssetRow({ onAdd }) {
   const [open,   setOpen]   = useState(false)
   const [name,   setName]   = useState('')
   const [value,  setValue]  = useState('')
@@ -151,7 +139,6 @@ function AddAssetCard({ onAdd }) {
   const nameRef = useRef(null)
 
   const startOpen = () => { setOpen(true); setTimeout(() => nameRef.current?.focus(), 0) }
-
   const cancel = () => { setOpen(false); setName(''); setValue(''); setDebt('') }
 
   const save = async () => {
@@ -166,40 +153,38 @@ function AddAssetCard({ onAdd }) {
 
   if (open) {
     return (
-      <div className="card border-accent/40 bg-accent/[0.04] flex flex-col gap-3">
-        <input ref={nameRef} value={name}
-          onChange={e => setName(e.target.value)} onKeyDown={kd}
-          placeholder="Asset name (e.g. 2022 Honda Civic)"
-          className={INPUT}
-        />
-        <div className="space-y-2">
-          <div className="space-y-1">
-            <label className="text-[10px] text-muted uppercase tracking-wider">Current Value</label>
-            <div className="relative">
+      <div className="px-4 py-3 bg-accent/[0.03] border-t border-border/40">
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+          <input ref={nameRef} value={name}
+            onChange={e => setName(e.target.value)} onKeyDown={kd}
+            placeholder="Asset name (e.g. 2022 Honda Civic)"
+            className={INPUT + ' sm:flex-1'}
+          />
+          <div className="flex gap-3 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-36">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none">$</span>
               <input type="number" min="0" step="100" value={value}
                 onChange={e => setValue(e.target.value)} onKeyDown={kd}
-                placeholder="0" className={INPUT + ' pl-6'}
+                placeholder="Value" className={INPUT + ' pl-6'}
               />
             </div>
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] text-muted uppercase tracking-wider">Current Debt</label>
-            <div className="relative">
+            <div className="relative flex-1 sm:w-36">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none">$</span>
               <input type="number" min="0" step="100" value={debt}
                 onChange={e => setDebt(e.target.value)} onKeyDown={kd}
-                placeholder="0" className={INPUT + ' pl-6'}
+                placeholder="Debt" className={INPUT + ' pl-6'}
               />
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={save} disabled={saving || !name.trim()}
-            className="flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40">
-            <Check size={12} /> {saving ? 'Saving…' : 'Add Asset'}
-          </button>
-          <button onClick={cancel} className="text-xs text-muted hover:text-slate-200 px-2 py-1.5 transition-colors">Cancel</button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={save} disabled={saving || !name.trim()}
+              className="flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40">
+              <Check size={12} /> {saving ? 'Saving…' : 'Add Asset'}
+            </button>
+            <button onClick={cancel} className="p-1.5 text-muted hover:text-slate-200 transition-colors">
+              <X size={14} />
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -207,11 +192,8 @@ function AddAssetCard({ onAdd }) {
 
   return (
     <button onClick={startOpen}
-      className="card border-dashed border-border/60 flex flex-col items-center justify-center gap-2 min-h-[160px] hover:border-accent/50 hover:bg-accent/[0.03] transition-all group">
-      <div className="w-8 h-8 rounded-full border border-dashed border-border/60 group-hover:border-accent/50 flex items-center justify-center transition-colors">
-        <Plus size={16} className="text-muted group-hover:text-accent transition-colors" />
-      </div>
-      <span className="text-xs text-muted group-hover:text-accent transition-colors">Add Asset</span>
+      className="w-full flex items-center gap-2 px-4 py-3 text-xs text-muted hover:text-accent hover:bg-accent/[0.03] transition-colors border-t border-border/40">
+      <Plus size={13} /> Add Asset
     </button>
   )
 }
@@ -265,7 +247,6 @@ export default function AssetsPage() {
           <p className="text-xs text-muted mt-0.5">Track owned physical assets and any debt against them</p>
         </div>
 
-        {/* Totals summary */}
         {assets.length > 0 && (
           <div className="flex items-center gap-5 shrink-0">
             <div className="text-right">
@@ -293,18 +274,32 @@ export default function AssetsPage() {
       {loading ? (
         <div className="text-sm text-muted py-10 text-center">Loading…</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {assets.map(a => (
-            <AssetCard key={a.id} asset={a} onSave={handleSave} onDelete={handleDelete} />
-          ))}
-          <AddAssetCard onAdd={handleAdd} />
-        </div>
-      )}
+        <div className="card p-0 overflow-hidden">
+          {/* Table header */}
+          {assets.length > 0 && (
+            <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-white/[0.02] text-[10px] text-muted uppercase tracking-wider">
+              <span className="flex-1">Asset</span>
+              <span className="w-32 text-right">Value</span>
+              <span className="w-32 text-right">Debt</span>
+              <span className="w-36 text-right border-l border-border/50 pl-4">Equity</span>
+              <span className="w-12" />
+            </div>
+          )}
 
-      {!loading && assets.length === 0 && (
-        <p className="text-xs text-muted text-center -mt-2">
-          Click the card above to add your first asset.
-        </p>
+          {/* Rows */}
+          {assets.map(a => (
+            <AssetRow key={a.id} asset={a} onSave={handleSave} onDelete={handleDelete} />
+          ))}
+
+          {/* Add row */}
+          <AddAssetRow onAdd={handleAdd} />
+
+          {assets.length === 0 && (
+            <p className="text-xs text-muted text-center py-8">
+              No assets yet — click Add Asset below to get started.
+            </p>
+          )}
+        </div>
       )}
     </div>
   )
