@@ -17,6 +17,7 @@ def init_db():
     _migrations = [
         "ALTER TABLE dividendholding ADD COLUMN user_added INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE liquidaccount ADD COLUMN apy REAL",
+        "ALTER TABLE etradecredential ADD COLUMN sandbox INTEGER NOT NULL DEFAULT 0",
     ]
     with engine.connect() as conn:
         for stmt in _migrations:

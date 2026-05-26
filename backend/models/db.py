@@ -201,6 +201,8 @@ class ETradeCredential(SQLModel, table=True):
     # durable — stored after successful OAuth
     access_token:   str      = Field(default="")
     access_secret:  str      = Field(default="")
+    # True when the consumer key only works against E*TRADE's sandbox environment
+    sandbox:        bool     = Field(default=False)
     updated_at:     datetime = Field(default_factory=datetime.utcnow)
 
 

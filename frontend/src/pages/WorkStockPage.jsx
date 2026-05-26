@@ -321,7 +321,7 @@ function ETradePanel() {
             <p className="text-sm font-semibold">E*TRADE Account</p>
             <p className="text-xs text-muted">
               {status.has_access
-                ? 'Connected — live portfolio positions · session expires at midnight ET'
+                ? `Connected${status.sandbox ? ' · Sandbox' : ''} — live portfolio positions · session expires at midnight ET`
                 : 'Not connected'}
             </p>
           </div>

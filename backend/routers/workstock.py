@@ -29,12 +29,16 @@ from database import get_session
 
 router = APIRouter(prefix="/workstock", tags=["workstock"])
 
+import logging
+
 # E*TRADE endpoint constants
 ETRADE_BASE_PROD    = "https://api.etrade.com"
 ETRADE_BASE_SAND    = "https://apisb.etrade.com"
 ETRADE_AUTH_URL     = "https://us.etrade.com/e/t/etws/authorize"
-ETRADE_REQUEST_URL  = f"{ETRADE_BASE_PROD}/oauth/request_token"
-ETRADE_ACCESS_URL   = f"{ETRADE_BASE_PROD}/oauth/access_token"
+
+
+def _etrade_base(sandbox: bool) -> str:
+    return ETRADE_BASE_SAND if sandbox else ETRADE_BASE_PROD
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -102,6 +106,7 @@ def etrade_status(session: Session = Depends(get_session)):
     return {
         "has_consumer":  bool(cred.consumer_key and cred.consumer_secret),
         "has_access":    bool(cred.access_token and cred.access_secret),
+        "sandbox":       bool(cred.sandbox),
     }
 
 
@@ -111,9 +116,10 @@ def save_credentials(body: dict, session: Session = Depends(get_session)):
     cred = _get_or_create_cred(session)
     cred.consumer_key    = body.get("consumer_key", "").strip()
     cred.consumer_secret = body.get("consumer_secret", "").strip()
-    # Clear any existing access tokens when credentials change
+    # Clear any existing access tokens and sandbox flag when credentials change
     cred.access_token  = ""
     cred.access_secret = ""
+    cred.sandbox       = False
     cred.updated_at    = datetime.utcnow()
     session.add(cred)
     session.commit()
@@ -133,13 +139,14 @@ def start_auth(session: Session = Depends(get_session)):
     if not (cred.consumer_key and cred.consumer_secret):
         raise HTTPException(400, "Consumer key/secret not configured")
 
+    base = _etrade_base(cred.sandbox)
     try:
         etrade = OAuth1Session(
             cred.consumer_key,
             client_secret=cred.consumer_secret,
             callback_uri="oob",  # out-of-band / PIN-based
         )
-        tokens = etrade.fetch_request_token(ETRADE_REQUEST_URL)
+        tokens = etrade.fetch_request_token(f"{base}/oauth/request_token")
     except Exception as e:
         raise HTTPException(502, f"E*TRADE request-token error: {e}")
 
@@ -172,6 +179,7 @@ def complete_auth(body: dict, session: Session = Depends(get_session)):
     if not (cred.request_token and cred.request_secret):
         raise HTTPException(400, "No pending auth — call /start-auth first")
 
+    base = _etrade_base(cred.sandbox)
     try:
         etrade = OAuth1Session(
             cred.consumer_key,
@@ -180,7 +188,7 @@ def complete_auth(body: dict, session: Session = Depends(get_session)):
             resource_owner_secret=cred.request_secret,
             verifier=pin,
         )
-        tokens = etrade.fetch_access_token(ETRADE_ACCESS_URL)
+        tokens = etrade.fetch_access_token(f"{base}/oauth/access_token")
     except Exception as e:
         raise HTTPException(502, f"E*TRADE access-token error: {e}")
 
@@ -232,12 +240,24 @@ def etrade_portfolio(session: Session = Depends(get_session)):
             resource_owner_secret=cred.access_secret,
         )
 
+    base = _etrade_base(cred.sandbox)
+
     # 1. Fetch account list
     try:
-        r = _session().get(f"{ETRADE_BASE_PROD}/v1/accounts/list.json")
+        r = _session().get(f"{base}/v1/accounts/list.json")
+
+        # Auto-detect sandbox key used against production endpoint
+        if r.status_code == 401 and "consumer_key_rejected" in r.text and not cred.sandbox:
+            logging.info("E*TRADE: consumer key is sandbox-only — switching to sandbox base URL and retrying")
+            cred.sandbox    = True
+            cred.updated_at = datetime.utcnow()
+            session.add(cred)
+            session.commit()
+            base = ETRADE_BASE_SAND
+            r = _session().get(f"{base}/v1/accounts/list.json")
+
         if r.status_code == 401:
-            # Access token expired (E*TRADE tokens expire daily at midnight ET).
-            # Clear the stale tokens so the UI knows to prompt for re-auth.
+            # Genuine auth failure (expired token or bad credentials) — clear tokens
             cred.access_token  = ""
             cred.access_secret = ""
             cred.updated_at    = datetime.utcnow()
@@ -248,6 +268,7 @@ def etrade_portfolio(session: Session = Depends(get_session)):
                 "E*TRADE session expired — tokens are valid only until midnight ET each day. "
                 "Please reconnect your account.",
             )
+
         r.raise_for_status()
         accounts_data = r.json()
     except HTTPException:
@@ -270,7 +291,7 @@ def etrade_portfolio(session: Session = Depends(get_session)):
         desc = acct.get("accountDesc", "")
         try:
             r = _session().get(
-                f"{ETRADE_BASE_PROD}/v1/accounts/{key}/portfolio.json"
+                f"{base}/v1/accounts/{key}/portfolio.json"
             )
             r.raise_for_status()
             port_data = r.json()
