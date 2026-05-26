@@ -204,6 +204,30 @@ class ETradeCredential(SQLModel, table=True):
     updated_at:     datetime = Field(default_factory=datetime.utcnow)
 
 
+class BrokerageAccount(SQLModel, table=True):
+    """A manually-tracked brokerage account (taxable investment account)."""
+    id:           Optional[int] = Field(default=None, primary_key=True)
+    name:         str           = Field(default="")
+    account_type: str           = Field(default="Taxable")  # Taxable | Crypto | HSA | Other
+    value:        float         = Field(default=0.0)
+    notes:        Optional[str] = None
+    updated_at:   datetime      = Field(default_factory=datetime.utcnow)
+
+
+class BrokerageAccountCreate(SQLModel):
+    name:         str
+    account_type: str           = "Taxable"
+    value:        float         = 0.0
+    notes:        Optional[str] = None
+
+
+class BrokerageAccountUpdate(SQLModel):
+    name:         Optional[str]   = None
+    account_type: Optional[str]   = None
+    value:        Optional[float] = None
+    notes:        Optional[str]   = None
+
+
 class SettingsUpdate(SQLModel):
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None

@@ -55,6 +55,7 @@ stock-tracker/
 │   │   ├── workstock.py              # /workstock/ — ESPP/RSU accounts + E*TRADE OAuth
 │   │   ├── assets.py                 # /assets/ — physical assets CRUD
 │   │   ├── liquid.py                 # /liquid/ — liquid accounts CRUD
+│   │   ├── brokerage.py              # /brokerage/ — brokerage accounts CRUD
 │   │   ├── inflation.py              # /inflation/current — BLS CPI-U rate
 │   │   └── staples.py                # /staples/prices — BLS consumer staples prices
 │   └── services/
@@ -102,6 +103,7 @@ Stocks
 Financial Assets
   ├─ Retirement
   ├─ Work Stock
+  ├─ Brokerage
   ├─ Physical Assets
   └─ Liquid Assets
 Planning
@@ -175,6 +177,7 @@ also adding a restore + light-mode override in `index.css`. Alternatively use
 | `RetirementAccount` | 401k/IRA/Roth accounts |
 | `Asset` | Physical assets with value + debt fields |
 | `WorkStockAccount` | ESPP/RSU equity plan accounts |
+| `BrokerageAccount` | Taxable/crypto/HSA brokerage accounts |
 | `ETradeCredential` | Singleton row for E*TRADE OAuth tokens |
 
 ---

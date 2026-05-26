@@ -65,6 +65,12 @@ export const api = {
   updateLiquidAccount:  (id, body)   => request(`/liquid/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteLiquidAccount:  (id)         => request(`/liquid/${id}`, { method: 'DELETE' }),
 
+  // Brokerage accounts
+  getBrokerageAccounts:    ()           => request('/brokerage/'),
+  createBrokerageAccount:  (body)       => request('/brokerage/', { method: 'POST', body: JSON.stringify(body) }),
+  updateBrokerageAccount:  (id, body)   => request(`/brokerage/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteBrokerageAccount:  (id)         => request(`/brokerage/${id}`, { method: 'DELETE' }),
+
   // Retirement accounts
   getRetirementAccounts:    ()           => request('/retirement/'),
   createRetirementAccount:  (body)       => request('/retirement/', { method: 'POST', body: JSON.stringify(body) }),

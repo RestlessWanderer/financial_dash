@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import {
   PiggyBank, Briefcase, Layers, Home, Landmark, Wallet,
-  TrendingUp, TrendingDown, ArrowRight,
+  TrendingUp, TrendingDown, ArrowRight, BarChart2,
 } from 'lucide-react'
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -130,6 +130,7 @@ function NWRow({ label, value, sign = '+', muted = false, total = false }) {
 export default function DashboardPage() {
   const [retirement, setRetirement] = useState(null)
   const [workStock,  setWorkStock]  = useState(null)
+  const [brokerage,  setBrokerage]  = useState(null)
   const [assets,     setAssets]     = useState(null)
   const [liquid,     setLiquid]     = useState(null)
   const [divData,    setDivData]    = useState(null)
@@ -153,13 +154,15 @@ export default function DashboardPage() {
     Promise.allSettled([
       api.getRetirementAccounts(),
       api.getWorkAccounts(),
+      api.getBrokerageAccounts(),
       api.getAssets(),
       api.getLiquidAccounts(),
       api.getDividends(),
       api.getDividendHoldings(),
-    ]).then(([retRes, wsRes, assetRes, liquidRes, divRes, holdRes]) => {
+    ]).then(([retRes, wsRes, broRes, assetRes, liquidRes, divRes, holdRes]) => {
       if (retRes.status    === 'fulfilled') setRetirement(retRes.value)
       if (wsRes.status     === 'fulfilled') setWorkStock(wsRes.value)
+      if (broRes.status    === 'fulfilled') setBrokerage(broRes.value)
       if (assetRes.status  === 'fulfilled') setAssets(assetRes.value)
       if (liquidRes.status === 'fulfilled') setLiquid(liquidRes.value)
       if (divRes.status    === 'fulfilled') setDivData(divRes.value)
@@ -171,6 +174,7 @@ export default function DashboardPage() {
   /* ── Derived numbers ── */
   const retirementTotal = (retirement ?? []).reduce((s, a) => s + (a.value ?? 0), 0)
   const workStockTotal  = (workStock  ?? []).reduce((s, a) => s + (a.value ?? 0), 0)
+  const brokerageTotal  = (brokerage  ?? []).reduce((s, a) => s + (a.value ?? 0), 0)
   const assetValue      = (assets     ?? []).reduce((s, a) => s + (a.value ?? 0), 0)
   const assetDebt       = (assets     ?? []).reduce((s, a) => s + (a.debt  ?? 0), 0)
   const assetEquity     = assetValue - assetDebt
@@ -184,7 +188,7 @@ export default function DashboardPage() {
     : null
 
   // Net worth = all assets minus all liabilities
-  const netAssets      = retirementTotal + workStockTotal + assetValue + liquidTotal
+  const netAssets      = retirementTotal + workStockTotal + brokerageTotal + assetValue + liquidTotal
   const netLiabilities = assetDebt + (hasMortgage ? mortgageBalance : 0)
   const netWorth       = netAssets - netLiabilities
   const nwReady        = !loading
@@ -242,6 +246,7 @@ export default function DashboardPage() {
 
             <NWRow label="Retirement Accounts" value={loading ? null : retirementTotal} sign="+" />
             <NWRow label="Work Stock Plans"    value={loading ? null : workStockTotal}  sign="+" />
+            <NWRow label="Brokerage Accounts"  value={loading ? null : brokerageTotal}  sign="+" />
             <NWRow label="Liquid Assets"       value={loading ? null : liquidTotal}     sign="+" />
             <NWRow label="Physical Asset Values" value={loading ? null : assetValue}   sign="+" />
             <NWRow label="Physical Asset Debts"  value={loading ? null : assetDebt}    sign="−" />
@@ -281,6 +286,20 @@ export default function DashboardPage() {
           loading={loading}
           rows={[
             ['Contribution to net worth', loading ? null : signed(workStockTotal), 'text-green-400/80'],
+          ]}
+        />
+
+        {/* Brokerage */}
+        <SectionCard
+          to="/brokerage"
+          icon={BarChart2}
+          iconClass="bg-indigo-500/10 text-indigo-400"
+          title="Brokerage Accounts"
+          primary={loading ? null : usd(brokerageTotal)}
+          primaryLabel={`${(brokerage ?? []).length} account${(brokerage ?? []).length !== 1 ? 's' : ''}`}
+          loading={loading}
+          rows={[
+            ['Contribution to net worth', loading ? null : signed(brokerageTotal), 'text-green-400/80'],
           ]}
         />
 

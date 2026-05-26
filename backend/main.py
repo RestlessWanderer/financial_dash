@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from database import init_db, engine
-from routers import tickers, alerts, dividends, retirement, workstock, assets, liquid, inflation, staples
+from routers import tickers, alerts, dividends, retirement, workstock, assets, liquid, inflation, staples, brokerage
 from services.scheduler import start_scheduler, stop_scheduler
 
 
@@ -34,6 +34,7 @@ app.include_router(assets.router)
 app.include_router(liquid.router)
 app.include_router(inflation.router)
 app.include_router(staples.router)
+app.include_router(brokerage.router)
 
 
 @app.get("/health")
