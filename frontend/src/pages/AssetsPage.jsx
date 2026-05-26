@@ -110,7 +110,7 @@ function AssetCard({ asset, onSave, onDelete }) {
           <button onClick={startEdit} className="p-1 text-muted hover:text-slate-200 transition-colors" title="Edit">
             <Pencil size={13} />
           </button>
-          <button onClick={() => onDelete(asset.id)} className="p-1 text-muted hover:text-red-400 transition-colors" title="Delete">
+          <button onClick={() => onDelete(asset.id)} className="p-1 text-muted hover:text-rose-400 transition-colors" title="Delete">
             <Trash2 size={13} />
           </button>
         </div>
@@ -124,14 +124,14 @@ function AssetCard({ asset, onSave, onDelete }) {
         </div>
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-[10px] text-muted uppercase tracking-wider">Debt</span>
-          <span className="mono text-lg font-semibold text-red-400/80">{usd(asset.debt)}</span>
+          <span className={`mono text-lg font-semibold ${asset.debt > 0 ? 'text-rose-400' : 'text-slate-200'}`}>{usd(asset.debt)}</span>
         </div>
       </div>
 
       {/* Divider + equity */}
       <div className="border-t border-border/60 pt-2.5 flex items-baseline justify-between gap-2">
         <span className="text-[10px] uppercase tracking-wider font-semibold text-muted">Equity</span>
-        <span className={`mono text-xl font-bold ${equityPositive ? 'text-green-400' : 'text-red-400'}`}>
+        <span className={`mono text-xl font-bold ${equityPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
           {equityPositive ? '' : '−'}{usd(Math.abs(equity))}
         </span>
       </div>
@@ -274,11 +274,11 @@ export default function AssetsPage() {
             </div>
             <div className="text-right">
               <p className="text-[10px] text-muted uppercase tracking-widest">Total Debt</p>
-              <p className="mono text-lg font-bold text-red-400/80 leading-none">{usd(totalDebt)}</p>
+              <p className="mono text-lg font-bold text-rose-400 leading-none">{usd(totalDebt)}</p>
             </div>
             <div className="text-right border-l border-border pl-5">
               <p className="text-[10px] text-muted uppercase tracking-widest">Net Equity</p>
-              <p className={`mono text-2xl font-bold leading-none ${totalEquity >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <p className={`mono text-2xl font-bold leading-none ${totalEquity >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {totalEquity >= 0 ? '' : '−'}{usd(Math.abs(totalEquity))}
               </p>
             </div>
@@ -287,7 +287,7 @@ export default function AssetsPage() {
       </div>
 
       {error && (
-        <div className="text-red-400 text-sm px-3 py-2 rounded-lg border border-red-400/20 bg-red-400/5">{error}</div>
+        <div className="text-rose-400 text-sm px-3 py-2 rounded-lg border border-rose-400/20 bg-rose-400/5">{error}</div>
       )}
 
       {loading ? (
