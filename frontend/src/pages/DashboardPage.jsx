@@ -138,9 +138,10 @@ export default function DashboardPage() {
   const [loading,    setLoading]    = useState(true)
 
   // Mortgage + retirement div holdings live in localStorage (client-side only)
-  const [mortgageConfig,   setMortgageConfig]   = useState(null)
-  const [mortgageExtras,   setMortgageExtras]   = useState(null)
-  const [retirementDivMap, setRetirementDivMap] = useState({}) // accountId → {symbol: shares}
+  const [mortgageConfig,      setMortgageConfig]      = useState(null)
+  const [mortgageExtras,      setMortgageExtras]      = useState(null)
+  const [retirementDivMap,    setRetirementDivMap]    = useState({}) // accountId → {symbol: shares}
+  const [retirementSnapshots, setRetirementSnapshots] = useState({}) // symbol → snapshot data
 
   useEffect(() => {
     // Read mortgage from localStorage
@@ -153,8 +154,8 @@ export default function DashboardPage() {
 
     // Read all retirement dividend holdings from localStorage
     // Keys are retirement_divs_{id} — scan all localStorage keys
+    let divMap = {}
     try {
-      const divMap = {}
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i)
         if (key?.startsWith('retirement_divs_')) {
@@ -183,6 +184,26 @@ export default function DashboardPage() {
       if (divRes.status    === 'fulfilled') setDivData(divRes.value)
       if (holdRes.status   === 'fulfilled') setDivHoldings(holdRes.value)
       setLoading(false)
+
+      // Find all retirement ticker symbols not in the dividend portfolio universe,
+      // then fetch their snapshot data so the retirement div income card is accurate
+      const knownSymbols = new Set(
+        (divRes.status === 'fulfilled' ? divRes.value?.stocks ?? [] : []).map(s => s.symbol)
+      )
+      const missing = [...new Set(
+        Object.values(divMap).flatMap(holdings => Object.keys(holdings))
+      )].filter(sym => !knownSymbols.has(sym))
+
+      if (missing.length > 0) {
+        Promise.allSettled(missing.map(sym => api.lookupDividendTicker(sym)))
+          .then(results => {
+            const fetched = {}
+            results.forEach((r, i) => {
+              if (r.status === 'fulfilled') fetched[missing[i]] = r.value
+            })
+            setRetirementSnapshots(fetched)
+          })
+      }
     })
   }, [])
 
@@ -202,10 +223,17 @@ export default function DashboardPage() {
     ? calcDividendIncome(divHoldings, divData.stocks ?? [])
     : null
 
-  // Retirement div income: sum across all accounts' localStorage holdings
+  // Retirement div income: sum across all accounts' localStorage holdings.
+  // Merge divData.stocks (dividend portfolio universe) with retirementSnapshots
+  // (tickers added only to retirement accounts, fetched via lookup endpoint).
   const retirementDivIncome = divData
-    ? Object.values(retirementDivMap).reduce((total, holdings) =>
-        total + calcDividendIncome(holdings, divData.stocks ?? []), 0)
+    ? (() => {
+        const snapMap = {}
+        for (const s of divData.stocks ?? []) snapMap[s.symbol] = s
+        Object.assign(snapMap, retirementSnapshots)
+        return Object.values(retirementDivMap).reduce((total, holdings) =>
+          total + calcDividendIncome(holdings, Object.values(snapMap)), 0)
+      })()
     : null
 
   // Net worth = all assets minus all liabilities
