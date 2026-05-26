@@ -2,10 +2,26 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { api } from '../api'
 import { RefreshCw, Landmark, Plus, X, LoaderCircle } from 'lucide-react'
 
-const TARGET          = 100_000
+const DEFAULT_TARGET  = 100_000
 const MIN_YIELD       = 0.05
-const MILESTONES      = [25_000, 50_000, 75_000, 100_000]
-const MILESTONE_LABELS = ['$25K', '$50K', '$75K', '$100K']
+
+function loadTarget() {
+  try {
+    const p = JSON.parse(localStorage.getItem('user_profile') ?? 'null')
+    return (p?.divGoal && p.divGoal > 0) ? p.divGoal : DEFAULT_TARGET
+  } catch { return DEFAULT_TARGET }
+}
+
+function formatGoalLabel(n) {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}K`
+  return `$${n}`
+}
+
+function buildMilestones(target) {
+  const step = target / 4
+  return [1, 2, 3, 4].map(i => Math.round(step * i))
+}
 
 function usd(n, dec = 0) {
   return (n ?? 0).toLocaleString('en-US', {
@@ -65,12 +81,26 @@ function progressColor(pct) {
   return '#22c55e'
 }
 
-const TICKS = [0, 10_000, 20_000, 25_000, 30_000, 40_000, 50_000, 60_000, 70_000, 75_000, 80_000, 90_000, 100_000]
-const TICK_LABELS = { 0: '$0', 25_000: '$25K', 50_000: '$50K', 75_000: '$75K', 100_000: '$100K' }
+function buildTicks(target) {
+  // 4 milestone ticks + start/end, plus minor ticks between milestones
+  const step = target / 4
+  const milestones = [0, step, step * 2, step * 3, target]
+  // add 3 minor ticks between each pair of milestones
+  const all = new Set(milestones)
+  for (let i = 0; i < 4; i++) {
+    const from = step * i
+    const minor = step / 4
+    for (let j = 1; j < 4; j++) all.add(Math.round(from + minor * j))
+  }
+  return [...all].sort((a, b) => a - b)
+}
 
 function IncomeProgressBar({ current, target }) {
   const pct   = Math.min(100, Math.max(0, (current / target) * 100))
   const color = progressColor(pct)
+  const step  = target / 4
+  const milestoneSet = new Set([0, step, step * 2, step * 3, target].map(Math.round))
+  const ticks = buildTicks(target)
   return (
     <div className="card space-y-3">
       <div className="flex items-center justify-between">
@@ -89,12 +119,12 @@ function IncomeProgressBar({ current, target }) {
         )}
       </div>
       <div className="relative" style={{ height: '24px' }}>
-        {TICKS.map(t => {
-          const x = (t / target) * 100
-          const label = TICK_LABELS[t]
-          const isMilestone = label !== undefined
-          const isFirst = t === 0
-          const isLast  = t === target
+        {ticks.map(t => {
+          const x           = (t / target) * 100
+          const isMilestone = milestoneSet.has(t)
+          const isFirst     = t === 0
+          const isLast      = t === target
+          const label       = isMilestone ? formatGoalLabel(t) : undefined
           return (
             <div key={t} className="absolute top-0 flex flex-col items-center"
               style={{
@@ -110,8 +140,8 @@ function IncomeProgressBar({ current, target }) {
       </div>
       <p className="text-[11px] text-muted -mt-1">
         {pct >= 100
-          ? <span className="text-green-400 font-semibold">🎉 $100K/yr goal reached!</span>
-          : <><span className="text-slate-300 font-medium">{usd(TARGET - current)}</span>{' '}remaining · {pct.toFixed(1)}% complete</>
+          ? <span className="text-emerald-400 font-semibold">🎉 {formatGoalLabel(target)}/yr goal reached!</span>
+          : <><span className="text-slate-300 font-medium">{usd(target - current)}</span>{' '}remaining · {pct.toFixed(1)}% complete</>
         }
       </p>
     </div>
@@ -119,15 +149,22 @@ function IncomeProgressBar({ current, target }) {
 }
 
 /* ── Add Ticker Card ─────────────────────────────────────────────── */
-function AddTickerCard({ onAdd }) {
+function AddTickerCard({ onAdd, screenedSymbols = [] }) {
   const [symbol,  setSymbol]  = useState('')
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
+  const [warn,    setWarn]    = useState('')
   const inputRef = useRef(null)
 
   const submit = async () => {
     const sym = symbol.trim().toUpperCase()
     if (!sym) return
+    // Check if already in the screened portfolio
+    if (screenedSymbols.includes(sym)) {
+      setWarn(sym)
+      return
+    }
+    setWarn('')
     setLoading(true)
     setError('')
     try {
@@ -145,7 +182,7 @@ function AddTickerCard({ onAdd }) {
 
   const kd = (e) => {
     if (e.key === 'Enter') submit()
-    if (e.key === 'Escape') { setSymbol(''); setError('') }
+    if (e.key === 'Escape') { setSymbol(''); setError(''); setWarn('') }
   }
 
   return (
@@ -160,7 +197,7 @@ function AddTickerCard({ onAdd }) {
           ref={inputRef}
           type="text"
           value={symbol}
-          onChange={e => { setSymbol(e.target.value.toUpperCase()); setError('') }}
+          onChange={e => { setSymbol(e.target.value.toUpperCase()); setError(''); setWarn('') }}
           onKeyDown={kd}
           placeholder="e.g. AAPL, JEPI, O"
           maxLength={10}
@@ -178,8 +215,16 @@ function AddTickerCard({ onAdd }) {
           }
         </button>
       </div>
+      {warn && (
+        <p className="text-[11px] text-amber-400 flex items-start gap-1.5">
+          <span className="shrink-0">ℹ</span>
+          <span>
+            <strong>{warn}</strong> is already in the screened portfolio below — scroll down to the Portfolio Breakdown table and update the <em>Shares Owned</em> column to track your position.
+          </span>
+        </p>
+      )}
       {error && (
-        <p className="text-[11px] text-red-400 flex items-start gap-1">
+        <p className="text-[11px] text-rose-400 flex items-start gap-1">
           <span className="shrink-0">⚠</span> {error}
         </p>
       )}
@@ -195,7 +240,15 @@ export default function DividendPage() {
   const [error,       setError]       = useState('')
   const [ownedInputs, setOwnedInputs] = useState({})
   const [savedOwned,  setSavedOwned]  = useState({})
+  const [TARGET,      setTARGET]      = useState(() => loadTarget())
   const debounceRef = useRef({})
+
+  // Re-read target from profile whenever page gains focus (user may have updated profile)
+  useEffect(() => {
+    const onFocus = () => setTARGET(loadTarget())
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   useEffect(() => {
     Promise.allSettled([api.getDividends(), api.getDividendHoldings()])
@@ -270,6 +323,7 @@ export default function DividendPage() {
   const screened   = allStocks.filter(s => !s.user_added)
   const qualified  = screened.filter(s => s.dividend_yield >= MIN_YIELD)
 
+  const MILESTONES = buildMilestones(TARGET)
   const plan = buildPlan(qualified, TARGET)
   const lastUpdated = timeAgo(data?.last_updated)
 
@@ -292,7 +346,7 @@ export default function DividendPage() {
           <h1 className="text-xl font-semibold">Dividend Income Planner</h1>
           <p className="text-xs text-muted mt-0.5">
             Your path to{' '}
-            <strong className="text-green-400">$100,000 / year</strong>{' '}
+            <strong className="text-emerald-400">{formatGoalLabel(TARGET)} / year</strong>{' '}
             in passive dividend income
           </p>
         </div>
@@ -312,11 +366,6 @@ export default function DividendPage() {
         <div className="text-red-400 text-sm px-3 py-2 rounded-lg border border-red-400/20 bg-red-400/5">{error}</div>
       )}
 
-      {/* ── Add Ticker card (always visible) ─────────────────────── */}
-      {!loading && !refreshing && (
-        <AddTickerCard onAdd={handleAddTicker} />
-      )}
-
       {/* ── Loading / refreshing ─────────────────────────────────── */}
       {(loading || refreshing) && (
         <div className="card text-center py-16 text-muted">
@@ -328,16 +377,19 @@ export default function DividendPage() {
         </div>
       )}
 
-      {/* ── Empty state ──────────────────────────────────────────── */}
-      {!loading && !refreshing && qualified.length === 0 && userAdded.length === 0 && (
-        <div className="card text-center py-16 text-muted space-y-2">
-          <Landmark size={32} className="mx-auto opacity-30" />
-          <p className="font-medium text-slate-300">No data yet</p>
-          <p className="text-xs max-w-sm mx-auto">
-            Click <strong className="text-slate-200">Load Data</strong> to screen
-            dividend-paying stocks and ETFs, or add your own tickers above.
-          </p>
-        </div>
+      {/* ── Empty state (no data yet) ────────────────────────────── */}
+      {!loading && !refreshing && !hasContent && (
+        <>
+          <div className="card text-center py-12 text-muted space-y-2">
+            <Landmark size={32} className="mx-auto opacity-30" />
+            <p className="font-medium text-slate-300">No data yet</p>
+            <p className="text-xs max-w-sm mx-auto">
+              Click <strong className="text-slate-200">Load Data</strong> to screen
+              dividend-paying stocks and ETFs, or add a ticker below.
+            </p>
+          </div>
+          <AddTickerCard onAdd={handleAddTicker} screenedSymbols={screened.map(s => s.symbol)} />
+        </>
       )}
 
       {/* ── Main planner ─────────────────────────────────────────── */}
@@ -346,71 +398,95 @@ export default function DividendPage() {
           {/* 1. Progress bar */}
           <IncomeProgressBar current={totalProjectedIncome} target={TARGET} />
 
-          {/* 2. Info cards */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="card border-green-500/20 bg-green-500/[0.04] space-y-3">
-              <p className="text-[10px] text-muted uppercase tracking-widest">$100K / yr Portfolio</p>
-              <div className="flex flex-wrap gap-x-6 gap-y-3">
-                <Stat label="Total needed" value={usd(plan.totalNeeded)} />
-                <Stat label="Avg yield"    value={`${(plan.avgYield * 100).toFixed(2)}%`} />
-                <Stat label="Positions"    value={qualified.length} />
-                <Stat label="Per stock"    value={usd(plan.perStock)} />
+          {/* 2. $100K portfolio info card */}
+          <div className="card border-emerald-500/20 bg-emerald-500/[0.04] space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] text-muted uppercase tracking-widest mb-2">{formatGoalLabel(TARGET)} / yr Portfolio</p>
+                <div className="flex flex-wrap gap-x-8 gap-y-3">
+                  <Stat label="Total needed" value={usd(plan.totalNeeded)} />
+                  <Stat label="Avg yield"    value={`${(plan.avgYield * 100).toFixed(2)}%`} />
+                  <Stat label="Positions"    value={qualified.length} />
+                  <Stat label="Per stock"    value={usd(plan.perStock)} />
+                </div>
               </div>
-              <div className="border-t border-border/40 pt-2.5 flex gap-6">
-                <Stat label="Invested so far" value={usd(totalActuallyInvested)} valueClass="text-green-400" />
-                <Stat label="To go" value={toGo === 0 ? '✓ done!' : usd(toGo)}
-                  valueClass={toGo === 0 ? 'text-green-400' : 'text-yellow-400'} />
+              <div className="text-right shrink-0">
+                <p className="text-[10px] text-muted uppercase tracking-widest mb-1">Current Projected Income</p>
+                <p className="text-4xl font-bold mono text-emerald-400 leading-none">{usd(totalProjectedIncome)}</p>
+                <p className="text-xs text-muted mt-1">per year</p>
+                {totalProjectedIncome > 0 && (
+                  <p className="text-xs text-muted mt-1">
+                    ≈ <strong className="text-slate-300">{usd(totalProjectedIncome / 12)}</strong> / mo &nbsp;·&nbsp;{' '}
+                    <strong className="text-slate-300">{((totalProjectedIncome / TARGET) * 100).toFixed(1)}%</strong> of goal
+                  </p>
+                )}
               </div>
             </div>
-            <div className="card border-green-500/20 bg-green-500/[0.04] flex flex-col justify-center gap-1">
-              <p className="text-[10px] text-muted uppercase tracking-widest">Current Projected Income</p>
-              <p className="text-5xl font-bold mono text-green-400 leading-none">{usd(totalProjectedIncome)}</p>
-              <p className="text-sm text-muted">per year</p>
-              {totalProjectedIncome > 0 && (
-                <p className="text-xs text-muted mt-1">
-                  ≈ <strong className="text-slate-300">{usd(totalProjectedIncome / 12)}</strong> / mo &nbsp;·&nbsp;{' '}
-                  <strong className="text-slate-300">{((totalProjectedIncome / TARGET) * 100).toFixed(1)}%</strong> of goal
-                </p>
-              )}
+            <div className="border-t border-border/40 pt-2.5 flex gap-8">
+              <Stat label="Invested so far" value={usd(totalActuallyInvested)} valueClass="text-emerald-400" />
+              <Stat label="Still needed"    value={toGo === 0 ? '✓ done!' : usd(toGo)}
+                valueClass={toGo === 0 ? 'text-emerald-400' : 'text-amber-400'} />
             </div>
           </div>
 
-          {/* 3. Milestone strip */}
-          <div className="grid grid-cols-4 gap-2">
+          {/* 3. Milestone step cards */}
+          <div className="grid grid-cols-4 gap-3">
             {MILESTONES.map((m, i) => {
               const p     = buildPlan(qualified, m)
               const toGoM = Math.max(0, p.totalNeeded - totalActuallyInvested)
               const done  = toGoM === 0
+              const pct   = Math.min(100, (totalActuallyInvested / p.totalNeeded) * 100)
               return (
-                <div key={m} className={`card p-3 border ${done ? 'border-green-500/50 bg-green-500/[0.07]' : 'border-border'}`}>
-                  <p className={`text-xs font-semibold mb-1 ${done ? 'text-green-400' : 'text-muted'}`}>
-                    {MILESTONE_LABELS[i]}/yr {done && <span className="ml-1">✓</span>}
-                  </p>
-                  <p className="mono text-sm font-bold text-slate-200">{usd(p.totalNeeded)}</p>
-                  <p className="text-[10px] text-muted mb-2">total needed</p>
-                  <div className="border-t border-border/50 pt-2 space-y-1">
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-[10px] text-muted">invested</span>
-                      <span className="mono text-[11px] text-green-400 font-medium">{usd(totalActuallyInvested)}</span>
+                <div key={m} className={`card p-4 border flex flex-col gap-3 ${done ? 'border-emerald-500/40 bg-emerald-500/[0.06]' : 'border-border'}`}>
+                  {/* Step label */}
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-bold uppercase tracking-wide ${done ? 'text-emerald-400' : 'text-slate-300'}`}>
+                      {formatGoalLabel(m)}/yr
+                    </span>
+                    {done && <span className="text-emerald-400 text-sm">✓</span>}
+                  </div>
+                  {/* Mini progress bar */}
+                  <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${done ? 'bg-emerald-400' : 'bg-accent'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  {/* Stats */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-[10px] text-muted">Total needed</span>
+                      <span className="mono text-xs font-semibold text-slate-200">{usd(p.totalNeeded)}</span>
                     </div>
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-[10px] text-muted">to go</span>
-                      <span className={`mono text-[11px] font-medium ${done ? 'text-green-400' : 'text-yellow-400'}`}>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-[10px] text-muted">Invested</span>
+                      <span className="mono text-xs font-medium text-emerald-400">{usd(totalActuallyInvested)}</span>
+                    </div>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-[10px] text-muted">To go</span>
+                      <span className={`mono text-xs font-medium ${done ? 'text-emerald-400' : 'text-amber-400'}`}>
                         {done ? '✓ done' : usd(toGoM)}
                       </span>
                     </div>
                   </div>
+                  {/* Pct complete */}
+                  <p className={`text-[10px] ${done ? 'text-emerald-400/80' : 'text-muted'}`}>
+                    {done ? 'Milestone reached!' : `${pct.toFixed(0)}% complete`}
+                  </p>
                 </div>
               )
             })}
           </div>
 
-          {/* 4. Table */}
+          {/* 4. Add a ticker */}
+          <AddTickerCard onAdd={handleAddTicker} screenedSymbols={screened.map(s => s.symbol)} />
+
+          {/* 5. Table */}
           <div className="card p-0 overflow-x-auto">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <span className="text-sm font-medium">
                 Portfolio breakdown —{' '}
-                <span className="text-green-400">$100,000 / yr</span>
+                <span className="text-emerald-400">{formatGoalLabel(TARGET)} / yr</span>
               </span>
               <span className="text-xs text-muted">
                 {qualified.length} screened · {userAdded.length} custom · update <em>Shares Owned</em> as you buy
@@ -429,7 +505,7 @@ export default function DividendPage() {
                   <th className="px-3 py-3 text-right">Invest</th>
                   <th className="px-3 py-3 text-right">Shares Goal</th>
                   <th className="px-3 py-3 text-right">Shares Owned</th>
-                  <th className="px-3 py-3 text-right text-green-400/70">Target Income / yr</th>
+                  <th className="px-3 py-3 text-right text-emerald-400/70">Target Income / yr</th>
                   <th className="px-3 py-3 w-8" />
                 </tr>
               </thead>
@@ -477,7 +553,7 @@ export default function DividendPage() {
                                 className="w-20 bg-surface border border-border rounded-md px-2 py-1 text-xs mono text-right focus:outline-none focus:border-accent transition-colors"
                               />
                             </td>
-                            <td className="px-3 py-2.5 text-right mono text-green-400/60">
+                            <td className="px-3 py-2.5 text-right mono text-emerald-400/70">
                               {owned > 0 ? usd(projIncome) : '—'}
                             </td>
                             <td className="px-3 py-2.5 text-center">
@@ -544,7 +620,7 @@ export default function DividendPage() {
                               className="w-20 bg-surface border border-border rounded-md px-2 py-1 text-xs mono text-right focus:outline-none focus:border-accent transition-colors"
                             />
                           </td>
-                          <td className="px-3 py-2.5 text-right mono text-green-400/60">
+                          <td className="px-3 py-2.5 text-right mono text-emerald-400/70">
                             {usd(s.targetIncome)}
                           </td>
                           <td className="px-3 py-2.5" />

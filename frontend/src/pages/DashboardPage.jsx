@@ -15,6 +15,19 @@ function usd(n, dec = 0) {
   })
 }
 
+function loadDivTarget() {
+  try {
+    const p = JSON.parse(localStorage.getItem('user_profile') ?? 'null')
+    return (p?.divGoal && p.divGoal > 0) ? p.divGoal : 100_000
+  } catch { return 100_000 }
+}
+
+function formatGoalLabel(n) {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}K`
+  return `$${n}`
+}
+
 function signed(n) {
   if (n == null || isNaN(n)) return '—'
   const abs = usd(Math.abs(n))
@@ -269,9 +282,18 @@ export default function DashboardPage() {
   const netWorth       = netAssets - netLiabilities
   const nwReady        = !loading
 
-  // Dividend progress toward $100K goal
+  // Dividend goal from profile (re-read on focus in case user updated profile)
+  const [divTarget, setDivTarget] = useState(() => loadDivTarget())
+  useEffect(() => {
+    const onFocus = () => setDivTarget(loadDivTarget())
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
+  const divMilestones = [1, 2, 3, 4].map(i => Math.round((divTarget / 4) * i))
+
+  // Dividend progress toward goal
   const divProgress = projectedIncome != null
-    ? Math.min(100, (projectedIncome / 100_000) * 100)
+    ? Math.min(100, (projectedIncome / divTarget) * 100)
     : null
 
   // Mortgage payoff label
@@ -362,7 +384,7 @@ export default function DashboardPage() {
 
           {/* Progress + milestone chips */}
           <div className="flex-1 sm:border-l sm:border-border/50 sm:pl-6 space-y-3">
-            <p className="text-[10px] text-slate-300 uppercase tracking-widest font-bold">Goal Progress — $100,000 / yr</p>
+            <p className="text-[10px] text-slate-300 uppercase tracking-widest font-bold">Goal Progress — {formatGoalLabel(divTarget)} / yr</p>
 
             {/* Progress bar */}
             <div className="space-y-1.5">
@@ -374,13 +396,13 @@ export default function DashboardPage() {
               </div>
               <div className="flex justify-between text-[10px] text-muted">
                 <span>{(divProgress ?? 0).toFixed(1)}% complete</span>
-                <span>{projectedIncome != null ? `${usd(100_000 - projectedIncome)} remaining` : '—'}</span>
+                <span>{projectedIncome != null ? `${usd(divTarget - projectedIncome)} remaining` : '—'}</span>
               </div>
             </div>
 
             {/* Milestone chips */}
             <div className="grid grid-cols-4 gap-2">
-              {[25_000, 50_000, 75_000, 100_000].map(milestone => {
+              {divMilestones.map(milestone => {
                 const reached = (projectedIncome ?? 0) >= milestone
                 return (
                   <div key={milestone}
@@ -390,7 +412,7 @@ export default function DashboardPage() {
                         : 'bg-white/[0.02] border-border/40'
                     }`}>
                     <p className={`text-[10px] font-bold uppercase tracking-wider ${reached ? 'text-emerald-400' : 'text-muted'}`}>
-                      {reached ? '✓' : ''} ${milestone / 1000}K
+                      {reached ? '✓ ' : ''}{formatGoalLabel(milestone)}
                     </p>
                   </div>
                 )

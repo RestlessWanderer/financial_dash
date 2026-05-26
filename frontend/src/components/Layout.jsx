@@ -24,19 +24,22 @@ export default function Layout() {
   const [editingProfile, setEditingProfile] = useState(false)
   const [ageDraft,       setAgeDraft]       = useState('')
   const [retireDraft,    setRetireDraft]    = useState('')
+  const [divGoalDraft,   setDivGoalDraft]   = useState('')
 
   const openProfile = () => {
-    setAgeDraft(profile.age    ?? '')
+    setAgeDraft(profile.age       ?? '')
     setRetireDraft(profile.retireAge ?? '')
+    setDivGoalDraft(profile.divGoal  ?? '')
     setEditingProfile(true)
   }
 
   const cancelProfile = () => setEditingProfile(false)
 
   const saveProfile = () => {
-    const age      = parseInt(ageDraft)    || null
-    const retireAge = parseInt(retireDraft) || null
-    const next = { ...profile, age, retireAge }
+    const age       = parseInt(ageDraft)     || null
+    const retireAge = parseInt(retireDraft)  || null
+    const divGoal   = parseFloat(divGoalDraft) || null
+    const next = { ...profile, age, retireAge, divGoal }
     setProfile(next)
     localStorage.setItem(LS_PROFILE, JSON.stringify(next))
     setEditingProfile(false)
@@ -130,6 +133,17 @@ export default function Layout() {
                     onChange={e => setRetireDraft(e.target.value)}
                     onKeyDown={profileKd}
                     placeholder="e.g. 65"
+                    className="w-full bg-surface border border-border rounded px-2 py-1 text-xs mono focus:outline-none focus:border-accent transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-200 block mb-0.5">Yearly Dividend Goal ($)</label>
+                  <input
+                    type="number" min="0" step="1000"
+                    value={divGoalDraft}
+                    onChange={e => setDivGoalDraft(e.target.value)}
+                    onKeyDown={profileKd}
+                    placeholder="e.g. 100000"
                     className="w-full bg-surface border border-border rounded px-2 py-1 text-xs mono focus:outline-none focus:border-accent transition-colors"
                   />
                 </div>
