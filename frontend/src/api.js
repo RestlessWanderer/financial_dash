@@ -85,6 +85,7 @@ export const api = {
     method: 'PATCH',
     body: JSON.stringify({ shares_owned: shares }),
   }),
+  lookupDividendTicker:  (symbol)         => request(`/dividends/lookup/${symbol}`),
   addDividendTicker:     (symbol)         => request('/dividends/tickers', {
     method: 'POST',
     body: JSON.stringify({ symbol }),

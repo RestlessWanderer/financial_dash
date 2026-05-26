@@ -105,7 +105,7 @@ function AddTickerRow({ onAdd }) {
     setLoading(true)
     setError('')
     try {
-      const result = await api.addDividendTicker(s)
+      const result = await api.lookupDividendTicker(s)
       onAdd(s, result)
       setSym('')
     } catch (e) {
@@ -473,16 +473,6 @@ export default function RetirementPage() {
     })
   }, [])
 
-  // When a new ticker is added in any account banner we need to fetch its snapshot
-  // (it may not be in the dividend universe cache yet, so we re-fetch the full list
-  // after a short delay to pick it up)
-  const refreshDivSnapshots = useCallback(() => {
-    api.getDividends().then(res => {
-      const map = {}
-      for (const s of res?.stocks ?? []) map[s.symbol] = s
-      setDivSnapshots(map)
-    }).catch(() => {})
-  }, [])
 
   const handleAdd = async (body) => {
     try {
@@ -521,9 +511,7 @@ export default function RetirementPage() {
   const handleAddTicker = useCallback((sym, data) => {
     // Update snapshot cache immediately so the row shows data right away
     setDivSnapshots(prev => ({ ...prev, [sym]: data }))
-    // Then refresh the full list in the background
-    setTimeout(refreshDivSnapshots, 2000)
-  }, [refreshDivSnapshots])
+  }, [])
 
   return (
     <div className="space-y-5">

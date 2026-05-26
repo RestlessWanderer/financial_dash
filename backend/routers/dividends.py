@@ -104,6 +104,33 @@ def refresh_dividends(session: Session = Depends(get_session)):
     }
 
 
+@router.get("/lookup/{symbol}")
+def lookup_ticker(symbol: str, session: Session = Depends(get_session)):
+    """
+    Look up dividend data for a symbol without persisting anything.
+    Used by the retirement page to get dividend rates without polluting
+    the dividend portfolio tracker.
+    Returns the snapshot from cache if available, otherwise fetches live.
+    """
+    sym = symbol.strip().upper()
+    if not sym:
+        raise HTTPException(status_code=422, detail="Symbol cannot be empty")
+
+    # Check cache first
+    snap = session.get(DividendSnapshot, sym)
+    if snap:
+        return snap.model_dump()
+
+    # Not cached — fetch live but don't store
+    data = fetch_one(sym)
+    if not data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No dividend data found for '{sym}'. The ticker may not exist or may not currently pay a dividend.",
+        )
+    return data
+
+
 @router.post("/tickers")
 def add_user_ticker(body: AddTickerRequest, session: Session = Depends(get_session)):
     """
