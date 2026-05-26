@@ -96,13 +96,11 @@ function AssetRow({ asset, onSave, onDelete }) {
 
       {/* Value */}
       <div className="text-right w-32 shrink-0">
-        <p className="text-[10px] text-muted uppercase tracking-wider">Value</p>
         <p className="mono text-sm font-semibold text-slate-200">{usd(asset.value)}</p>
       </div>
 
       {/* Debt */}
       <div className="text-right w-32 shrink-0">
-        <p className="text-[10px] text-muted uppercase tracking-wider">Debt</p>
         <p className={`mono text-sm font-semibold ${asset.debt > 0 ? 'text-rose-400' : 'text-slate-200'}`}>
           {usd(asset.debt)}
         </p>
@@ -110,7 +108,6 @@ function AssetRow({ asset, onSave, onDelete }) {
 
       {/* Equity */}
       <div className="text-right w-36 shrink-0 border-l border-border/50 pl-4">
-        <p className="text-[10px] text-muted uppercase tracking-wider">Equity</p>
         <p className={`mono text-sm font-semibold ${equity >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
           {equity >= 0 ? '' : '−'}{usd(Math.abs(equity))}
         </p>

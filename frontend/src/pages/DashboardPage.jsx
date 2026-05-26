@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import {
   PiggyBank, Briefcase, Layers, Home, Landmark, Wallet,
-  TrendingUp, TrendingDown, ArrowRight, BarChart2,
+  TrendingUp, TrendingDown, ArrowRight, BarChart2, CreditCard,
 } from 'lucide-react'
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -54,6 +54,24 @@ function calcMortgageBalance(config, extras) {
     balance = Math.max(0, balance - prinPaid - extra)
   }
   return Math.round(balance * 100) / 100
+}
+
+/** Total interest over the life of a single loan. */
+function calcLoanInterest(loan) {
+  const principal = parseFloat(loan.amount) || 0
+  const rate      = parseFloat(loan.rate)   || 0
+  const termYears = parseFloat(loan.term)   || 0
+  if (principal <= 0 || termYears <= 0) return 0
+  if (loan.interestType === 'simple') {
+    return principal * (rate / 100) * termYears
+  }
+  // Fixed amortizing
+  if (rate === 0) return 0
+  const monthlyRate = rate / 100 / 12
+  const totalMonths = termYears * 12
+  const pow         = Math.pow(1 + monthlyRate, totalMonths)
+  const payment     = principal * monthlyRate * pow / (pow - 1)
+  return (payment * totalMonths) - principal
 }
 
 /** Projected annual dividend income from owned shares. */
@@ -136,19 +154,24 @@ export default function DashboardPage() {
   const [divHoldings,setDivHoldings]= useState(null)
   const [loading,    setLoading]    = useState(true)
 
-  // Mortgage + retirement div holdings live in localStorage (client-side only)
+  // Mortgage + loans + retirement div holdings live in localStorage (client-side only)
   const [mortgageConfig,      setMortgageConfig]      = useState(null)
   const [mortgageExtras,      setMortgageExtras]      = useState(null)
+  const [loans,               setLoans]               = useState([])
   const [retirementDivMap,    setRetirementDivMap]    = useState({}) // accountId → {symbol: shares}
   const [retirementSnapshots, setRetirementSnapshots] = useState({}) // symbol → snapshot data
 
   useEffect(() => {
-    // Read mortgage from localStorage
+    // Read mortgage and loans from localStorage
     try {
       const cfg = localStorage.getItem('mortgage_config')
       const ext = localStorage.getItem('mortgage_extras')
       if (cfg) setMortgageConfig(JSON.parse(cfg))
       if (ext) setMortgageExtras(JSON.parse(ext))
+    } catch { /* ignore */ }
+    try {
+      const l = localStorage.getItem('loans_data')
+      if (l) setLoans(JSON.parse(l))
     } catch { /* ignore */ }
 
     // Read all retirement dividend holdings from localStorage
@@ -235,9 +258,14 @@ export default function DashboardPage() {
       })()
     : null
 
-  // Net worth = all assets minus all liabilities
+  // Loan totals (from localStorage)
+  const loanInterestTotal  = loans.reduce((s, l) => s + calcLoanInterest(l), 0)
+  const loanPrincipalTotal = loans.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0)
+  const hasLoans           = loans.length > 0
+
+  // Net worth = all assets minus all liabilities (including total loan interest as a drag)
   const netAssets      = retirementTotal + workStockTotal + brokerageTotal + assetValue + liquidTotal
-  const netLiabilities = assetDebt + (hasMortgage ? mortgageBalance : 0)
+  const netLiabilities = assetDebt + (hasMortgage ? mortgageBalance : 0) + loanInterestTotal
   const netWorth       = netAssets - netLiabilities
   const nwReady        = !loading
 
@@ -299,7 +327,10 @@ export default function DashboardPage() {
               <NWMiniCard label="Physical Assets"  value={assetValue}      sign="+"  loading={loading} />
               <NWMiniCard label="Asset Debt"       value={assetDebt}       sign="−"  loading={loading} liability />
               {hasMortgage && (
-                <NWMiniCard label="Mortgage"       value={mortgageBalance} sign="−"  loading={loading} liability />
+                <NWMiniCard label="Mortgage"       value={mortgageBalance}   sign="−" loading={loading} liability />
+              )}
+              {hasLoans && (
+                <NWMiniCard label="Loan Interest"  value={loanInterestTotal} sign="−" loading={false}   liability />
               )}
             </div>
           </div>
@@ -446,6 +477,23 @@ export default function DashboardPage() {
           rows={loading ? [] : [
             ['Contribution to net worth', signed(liquidTotal), 'text-green-400/80'],
           ]}
+        />
+
+        {/* Loans */}
+        <SectionCard
+          to="/loans"
+          icon={CreditCard}
+          iconClass="bg-rose-500/10 text-rose-400"
+          title="Loans"
+          primary={hasLoans ? usd(loanInterestTotal) : 'None'}
+          primaryLabel={hasLoans ? 'total interest drag' : null}
+          primaryClass={hasLoans ? 'text-rose-400' : 'text-slate-400'}
+          loading={false}
+          rows={hasLoans ? [
+            ['Principal',      usd(loanPrincipalTotal),                    'text-slate-300'],
+            [`${loans.length} loan${loans.length !== 1 ? 's' : ''}`, '', 'text-muted'],
+            ['Net worth drag', `−${usd(loanInterestTotal)}`,               'text-rose-400'],
+          ] : []}
         />
 
         {/* Mortgage */}
