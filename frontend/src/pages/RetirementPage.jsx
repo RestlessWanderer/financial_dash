@@ -1,11 +1,16 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { api } from '../api'
-import { Plus, Pencil, Trash2, Check, X } from 'lucide-react'
+import {
+  Plus, Pencil, Trash2, Check, X, ChevronDown, ChevronRight,
+  Landmark, Loader2, AlertCircle,
+} from 'lucide-react'
 
-function usd(n) {
-  return (n ?? 0).toLocaleString('en-US', {
+/* ── Helpers ──────────────────────────────────────────────────────── */
+function usd(n, dec = 0) {
+  if (n == null || isNaN(n)) return '—'
+  return Math.abs(n).toLocaleString('en-US', {
     style: 'currency', currency: 'USD',
-    minimumFractionDigits: 0, maximumFractionDigits: 0,
+    minimumFractionDigits: dec, maximumFractionDigits: dec,
   })
 }
 
@@ -20,28 +25,162 @@ function timeAgo(iso) {
   return d === 1 ? 'yesterday' : `${d}d ago`
 }
 
-/* ── Inline editable account card ─────────────────────────────────── */
-function AccountCard({ account, onSave, onDelete }) {
-  const [editing, setEditing]   = useState(false)
-  const [name,    setName]      = useState(account.name)
-  const [value,   setValue]     = useState(String(account.value))
-  const [saving,  setSaving]    = useState(false)
+/* localStorage helpers for per-account dividend holdings */
+function loadAccountDivs(accountId) {
+  try {
+    const raw = localStorage.getItem(`retirement_divs_${accountId}`)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function saveAccountDivs(accountId, holdings) {
+  localStorage.setItem(`retirement_divs_${accountId}`, JSON.stringify(holdings))
+}
+
+/* ── Dividend ticker row inside an account ────────────────────────── */
+function DividendRow({ symbol, data, shares, onSharesChange, onRemove }) {
+  const annualDiv   = (data?.annual_dividend ?? 0) * shares
+  const yieldPct    = data?.dividend_yield != null ? `${(data.dividend_yield * 100).toFixed(2)}%` : '—'
+
+  return (
+    <div className="flex items-center gap-3 py-2 border-b border-border/30 last:border-0 group">
+      {/* Symbol + name */}
+      <div className="w-20 shrink-0">
+        <p className="text-xs font-semibold text-slate-200">{symbol}</p>
+        <p className="text-[10px] text-muted truncate max-w-[76px]">{data?.name ?? '—'}</p>
+      </div>
+
+      {/* Annual div per share + yield */}
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-muted">
+          {data?.annual_dividend != null ? `${usd(data.annual_dividend, 2)}/share` : '—'}
+          <span className="ml-2 text-[10px]">{yieldPct} yield</span>
+        </p>
+      </div>
+
+      {/* Shares owned */}
+      <div className="w-28 shrink-0">
+        <div className="relative">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={shares === 0 ? '' : shares}
+            onChange={e => onSharesChange(symbol, parseFloat(e.target.value) || 0)}
+            placeholder="0 shares"
+            className="w-full bg-surface border border-border rounded px-2 py-1 text-xs mono focus:outline-none focus:border-accent transition-colors text-right"
+          />
+        </div>
+      </div>
+
+      {/* Annual income */}
+      <div className="w-24 shrink-0 text-right">
+        <p className={`mono text-xs font-semibold ${annualDiv > 0 ? 'text-emerald-400' : 'text-muted'}`}>
+          {annualDiv > 0 ? `${usd(annualDiv)}/yr` : '—'}
+        </p>
+      </div>
+
+      {/* Remove */}
+      <button
+        onClick={() => onRemove(symbol)}
+        className="p-1 text-muted hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+        title="Remove"
+      >
+        <Trash2 size={12} />
+      </button>
+    </div>
+  )
+}
+
+/* ── Add ticker input ─────────────────────────────────────────────── */
+function AddTickerRow({ onAdd }) {
+  const [sym,     setSym]     = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+  const inputRef = useRef(null)
+
+  const handleAdd = async () => {
+    const s = sym.trim().toUpperCase()
+    if (!s) return
+    setLoading(true)
+    setError('')
+    try {
+      const result = await api.addDividendTicker(s)
+      onAdd(s, result)
+      setSym('')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter') handleAdd()
+    if (e.key === 'Escape') { setSym(''); setError('') }
+  }
+
+  return (
+    <div className="pt-2 space-y-1">
+      <div className="flex items-center gap-2">
+        <input
+          ref={inputRef}
+          value={sym}
+          onChange={e => { setSym(e.target.value.toUpperCase()); setError('') }}
+          onKeyDown={handleKey}
+          placeholder="Add ticker (e.g. VTI)"
+          className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-accent transition-colors"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={loading || !sym.trim()}
+          className="flex items-center gap-1 bg-accent/15 text-accent border border-accent/30 px-3 py-1.5 rounded text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40"
+        >
+          {loading ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+          Add
+        </button>
+      </div>
+      {error && (
+        <p className="text-[10px] text-rose-400 flex items-center gap-1">
+          <AlertCircle size={10} /> {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/* ── Account banner ───────────────────────────────────────────────── */
+function AccountBanner({ account, onSave, onDelete, divSnapshots, onAddTicker }) {
+  const [expanded, setExpanded]   = useState(false)
+  const [editing,  setEditing]    = useState(false)
+  const [name,     setName]       = useState(account.name)
+  const [value,    setValue]      = useState(String(account.value))
+  const [saving,   setSaving]     = useState(false)
   const nameRef = useRef(null)
 
-  const startEdit = () => {
+  // Per-account dividend holdings: symbol → shares
+  const [holdings, setHoldings] = useState(() => loadAccountDivs(account.id))
+
+  // Symbols that have been added (in order)
+  const symbols = Object.keys(holdings)
+
+  const startEdit = (e) => {
+    e.stopPropagation()
     setName(account.name)
     setValue(String(account.value))
     setEditing(true)
     setTimeout(() => nameRef.current?.focus(), 0)
   }
 
-  const cancel = () => {
+  const cancel = (e) => {
+    e?.stopPropagation()
     setEditing(false)
     setName(account.name)
     setValue(String(account.value))
   }
 
-  const save = async () => {
+  const save = async (e) => {
+    e?.stopPropagation()
     const trimName = name.trim()
     if (!trimName) return
     setSaving(true)
@@ -50,47 +189,78 @@ function AccountCard({ account, onSave, onDelete }) {
     setSaving(false)
   }
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') save()
-    if (e.key === 'Escape') cancel()
+  const handleKey = (e) => {
+    if (e.key === 'Enter') save(e)
+    if (e.key === 'Escape') cancel(e)
   }
 
+  /* Dividend helpers */
+  const updateShares = useCallback((sym, shares) => {
+    setHoldings(prev => {
+      const next = { ...prev, [sym]: shares }
+      saveAccountDivs(account.id, next)
+      return next
+    })
+  }, [account.id])
+
+  const removeTicker = useCallback((sym) => {
+    setHoldings(prev => {
+      const next = { ...prev }
+      delete next[sym]
+      saveAccountDivs(account.id, next)
+      return next
+    })
+  }, [account.id])
+
+  const handleAddTicker = useCallback((sym, data) => {
+    setHoldings(prev => {
+      if (sym in prev) return prev
+      const next = { ...prev, [sym]: 0 }
+      saveAccountDivs(account.id, next)
+      return next
+    })
+    onAddTicker?.(sym, data)
+  }, [account.id, onAddTicker])
+
+  // Compute annual div income for this account
+  const annualIncome = symbols.reduce((sum, sym) => {
+    const data   = divSnapshots[sym]
+    const shares = holdings[sym] ?? 0
+    return sum + (data?.annual_dividend ?? 0) * shares
+  }, 0)
+
+  /* ── Edit mode ── */
   if (editing) {
     return (
-      <div className="card border-accent/40 bg-accent/[0.04] flex flex-col gap-3">
-        <input
-          ref={nameRef}
-          value={name}
-          onChange={e => setName(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Account name"
-          className="w-full bg-surface border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent transition-colors"
-        />
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none">$</span>
+      <div className="card border-accent/40 bg-accent/[0.04] flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3">
           <input
-            type="number"
-            min="0"
-            step="1000"
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="0"
-            className="w-full bg-surface border border-border rounded-md pl-6 pr-3 py-1.5 text-sm mono focus:outline-none focus:border-accent transition-colors"
+            ref={nameRef}
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Account name"
+            className="flex-1 bg-surface border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent transition-colors"
           />
-        </div>
-        <div className="flex items-center gap-2">
+          <div className="relative w-40 shrink-0">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none">$</span>
+            <input
+              type="number" min="0" step="1000"
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              onKeyDown={handleKey}
+              placeholder="0"
+              className="w-full bg-surface border border-border rounded-md pl-6 pr-3 py-1.5 text-sm mono focus:outline-none focus:border-accent transition-colors"
+            />
+          </div>
           <button
             onClick={save}
             disabled={saving || !name.trim()}
-            className="flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40"
+            className="flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40 shrink-0"
           >
             <Check size={12} /> {saving ? 'Saving…' : 'Save'}
           </button>
-          <button
-            onClick={cancel}
-            className="text-xs text-muted hover:text-slate-200 px-2 py-1.5 transition-colors"
-          >
+          <button onClick={cancel} className="text-xs text-muted hover:text-slate-200 px-2 py-1.5 transition-colors shrink-0">
             Cancel
           </button>
         </div>
@@ -98,44 +268,110 @@ function AccountCard({ account, onSave, onDelete }) {
     )
   }
 
+  /* ── Display mode ── */
   return (
-    <div className="card group flex flex-col gap-2">
-      {/* Name row + action buttons */}
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs text-muted uppercase tracking-widest truncate">{account.name}</p>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <button
-            onClick={startEdit}
-            className="p-1 text-muted hover:text-slate-200 transition-colors"
-            title="Edit"
-          >
+    <div className="card flex flex-col gap-0 overflow-hidden p-0">
+
+      {/* Banner header row */}
+      <div
+        className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors group"
+        onClick={() => setExpanded(e => !e)}
+      >
+        {/* Chevron */}
+        <div className="text-muted shrink-0">
+          {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+        </div>
+
+        {/* Name */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-slate-200 truncate">{account.name}</p>
+          <p className="text-[10px] text-muted">Updated {timeAgo(account.updated_at)}</p>
+        </div>
+
+        {/* Annual dividend income */}
+        {annualIncome > 0 && (
+          <div className="text-right shrink-0 mr-4">
+            <p className="text-[10px] text-muted uppercase tracking-widest">Div. Income</p>
+            <p className="mono text-sm font-semibold text-emerald-400">{usd(annualIncome)}/yr</p>
+          </div>
+        )}
+
+        {/* Balance */}
+        <div className="text-right shrink-0 w-36">
+          <p className="text-[10px] text-muted uppercase tracking-widest">Balance</p>
+          <p className="mono text-xl font-bold text-slate-200">{usd(account.value)}</p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
+          <button onClick={startEdit} className="p-1.5 text-muted hover:text-slate-200 transition-colors" title="Edit">
             <Pencil size={13} />
           </button>
-          <button
-            onClick={() => onDelete(account.id)}
-            className="p-1 text-muted hover:text-red-400 transition-colors"
-            title="Delete"
-          >
+          <button onClick={() => onDelete(account.id)} className="p-1.5 text-muted hover:text-rose-400 transition-colors" title="Delete">
             <Trash2 size={13} />
           </button>
         </div>
       </div>
 
-      {/* Value */}
-      <p className="mono text-3xl font-bold text-slate-200 leading-none">
-        {usd(account.value)}
-      </p>
+      {/* Expanded dividend section */}
+      {expanded && (
+        <div className="border-t border-border/50 px-4 py-3 bg-white/[0.01]">
+          <div className="flex items-center gap-2 mb-3">
+            <Landmark size={12} className="text-muted" />
+            <p className="text-[10px] text-muted uppercase tracking-widest">Dividend Holdings in this Account</p>
+          </div>
 
-      {/* Last updated */}
-      <p className="text-[10px] text-muted mt-auto pt-1">
-        Updated {timeAgo(account.updated_at)}
-      </p>
+          {/* Column headers */}
+          {symbols.length > 0 && (
+            <div className="flex items-center gap-3 pb-1 border-b border-border/30 mb-1">
+              <div className="w-20 shrink-0">
+                <p className="text-[10px] text-muted uppercase tracking-widest">Ticker</p>
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] text-muted uppercase tracking-widest">Div / Share · Yield</p>
+              </div>
+              <div className="w-28 shrink-0 text-right">
+                <p className="text-[10px] text-muted uppercase tracking-widest">Shares</p>
+              </div>
+              <div className="w-24 shrink-0 text-right">
+                <p className="text-[10px] text-muted uppercase tracking-widest">Annual Income</p>
+              </div>
+              <div className="w-6 shrink-0" />
+            </div>
+          )}
+
+          {/* Ticker rows */}
+          {symbols.map(sym => (
+            <DividendRow
+              key={sym}
+              symbol={sym}
+              data={divSnapshots[sym]}
+              shares={holdings[sym] ?? 0}
+              onSharesChange={updateShares}
+              onRemove={removeTicker}
+            />
+          ))}
+
+          {/* Account total */}
+          {symbols.length > 0 && (
+            <div className="flex items-center justify-end gap-4 pt-2 mt-1 border-t border-border/30">
+              <p className="text-[10px] text-muted uppercase tracking-widest">Account Total</p>
+              <p className={`mono text-sm font-bold ${annualIncome > 0 ? 'text-emerald-400' : 'text-muted'}`}>
+                {annualIncome > 0 ? `${usd(annualIncome)}/yr` : '—'}
+              </p>
+            </div>
+          )}
+
+          {/* Add ticker */}
+          <AddTickerRow onAdd={handleAddTicker} />
+        </div>
+      )}
     </div>
   )
 }
 
-/* ── Add card ──────────────────────────────────────────────────────── */
-function AddCard({ onAdd }) {
+/* ── Add account banner ───────────────────────────────────────────── */
+function AddAccountBanner({ onAdd }) {
   const [open,   setOpen]   = useState(false)
   const [name,   setName]   = useState('')
   const [value,  setValue]  = useState('')
@@ -147,66 +383,53 @@ function AddCard({ onAdd }) {
     setTimeout(() => nameRef.current?.focus(), 0)
   }
 
-  const cancel = () => {
-    setOpen(false)
-    setName('')
-    setValue('')
-  }
+  const cancel = () => { setOpen(false); setName(''); setValue('') }
 
   const save = async () => {
     if (!name.trim()) return
     setSaving(true)
     await onAdd({ name: name.trim(), value: parseFloat(value) || 0 })
-    setOpen(false)
-    setName('')
-    setValue('')
+    setOpen(false); setName(''); setValue('')
     setSaving(false)
   }
 
-  const handleKeyDown = (e) => {
+  const handleKey = (e) => {
     if (e.key === 'Enter') save()
     if (e.key === 'Escape') cancel()
   }
 
   if (open) {
     return (
-      <div className="card border-accent/40 bg-accent/[0.04] flex flex-col gap-3">
+      <div className="card border-accent/40 bg-accent/[0.04] flex items-center gap-3">
         <input
           ref={nameRef}
           value={name}
           onChange={e => setName(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={handleKey}
           placeholder="Account name (e.g. Roth IRA)"
-          className="w-full bg-surface border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent transition-colors"
+          className="flex-1 bg-surface border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-accent transition-colors"
         />
-        <div className="relative">
+        <div className="relative w-40 shrink-0">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none">$</span>
           <input
-            type="number"
-            min="0"
-            step="1000"
+            type="number" min="0" step="1000"
             value={value}
             onChange={e => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
+            onKeyDown={handleKey}
             placeholder="0"
             className="w-full bg-surface border border-border rounded-md pl-6 pr-3 py-1.5 text-sm mono focus:outline-none focus:border-accent transition-colors"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={save}
-            disabled={saving || !name.trim()}
-            className="flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40"
-          >
-            <Check size={12} /> {saving ? 'Saving…' : 'Add Account'}
-          </button>
-          <button
-            onClick={cancel}
-            className="text-xs text-muted hover:text-slate-200 px-2 py-1.5 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
+        <button
+          onClick={save}
+          disabled={saving || !name.trim()}
+          className="flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40 shrink-0"
+        >
+          <Check size={12} /> {saving ? 'Saving…' : 'Add Account'}
+        </button>
+        <button onClick={cancel} className="text-xs text-muted hover:text-slate-200 px-2 py-1.5 transition-colors shrink-0">
+          Cancel
+        </button>
       </div>
     )
   }
@@ -214,10 +437,10 @@ function AddCard({ onAdd }) {
   return (
     <button
       onClick={startOpen}
-      className="card border-dashed border-border/60 flex flex-col items-center justify-center gap-2 min-h-[120px] hover:border-accent/50 hover:bg-accent/[0.03] transition-all group"
+      className="w-full card border-dashed border-border/60 flex items-center justify-center gap-2 py-3 hover:border-accent/50 hover:bg-accent/[0.03] transition-all group"
     >
-      <div className="w-8 h-8 rounded-full border border-dashed border-border/60 group-hover:border-accent/50 flex items-center justify-center transition-colors">
-        <Plus size={16} className="text-muted group-hover:text-accent transition-colors" />
+      <div className="w-6 h-6 rounded-full border border-dashed border-border/60 group-hover:border-accent/50 flex items-center justify-center transition-colors">
+        <Plus size={13} className="text-muted group-hover:text-accent transition-colors" />
       </div>
       <span className="text-xs text-muted group-hover:text-accent transition-colors">Add Account</span>
     </button>
@@ -226,33 +449,53 @@ function AddCard({ onAdd }) {
 
 /* ── Page ──────────────────────────────────────────────────────────── */
 export default function RetirementPage() {
-  const [accounts, setAccounts] = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState('')
+  const [accounts,     setAccounts]     = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [error,        setError]        = useState('')
+  const [divSnapshots, setDivSnapshots] = useState({}) // symbol → snapshot data
 
   useEffect(() => {
-    api.getRetirementAccounts()
-      .then(setAccounts)
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false))
+    Promise.allSettled([
+      api.getRetirementAccounts(),
+      api.getDividends(),
+    ]).then(([accRes, divRes]) => {
+      if (accRes.status === 'fulfilled') setAccounts(accRes.value)
+      else setError(accRes.reason?.message ?? 'Failed to load accounts')
+
+      // Build a symbol → snapshot map for quick lookup in AccountBanner
+      if (divRes.status === 'fulfilled') {
+        const map = {}
+        for (const s of divRes.value?.stocks ?? []) map[s.symbol] = s
+        setDivSnapshots(map)
+      }
+
+      setLoading(false)
+    })
+  }, [])
+
+  // When a new ticker is added in any account banner we need to fetch its snapshot
+  // (it may not be in the dividend universe cache yet, so we re-fetch the full list
+  // after a short delay to pick it up)
+  const refreshDivSnapshots = useCallback(() => {
+    api.getDividends().then(res => {
+      const map = {}
+      for (const s of res?.stocks ?? []) map[s.symbol] = s
+      setDivSnapshots(map)
+    }).catch(() => {})
   }, [])
 
   const handleAdd = async (body) => {
     try {
       const created = await api.createRetirementAccount(body)
       setAccounts(prev => [...prev, created])
-    } catch (e) {
-      setError(e.message)
-    }
+    } catch (e) { setError(e.message) }
   }
 
   const handleSave = async (id, body) => {
     try {
       const updated = await api.updateRetirementAccount(id, body)
       setAccounts(prev => prev.map(a => a.id === id ? updated : a))
-    } catch (e) {
-      setError(e.message)
-    }
+    } catch (e) { setError(e.message) }
   }
 
   const handleDelete = async (id) => {
@@ -260,34 +503,63 @@ export default function RetirementPage() {
     try {
       await api.deleteRetirementAccount(id)
       setAccounts(prev => prev.filter(a => a.id !== id))
-    } catch (e) {
-      setError(e.message)
-    }
+      localStorage.removeItem(`retirement_divs_${id}`)
+    } catch (e) { setError(e.message) }
   }
 
+  /* ── Derived totals ── */
   const total = accounts.reduce((s, a) => s + (a.value ?? 0), 0)
+
+  // Sum annual div income across all accounts using their localStorage holdings
+  const totalDivIncome = accounts.reduce((sum, a) => {
+    const holdings = loadAccountDivs(a.id)
+    return sum + Object.entries(holdings).reduce((s, [sym, shares]) => {
+      return s + (divSnapshots[sym]?.annual_dividend ?? 0) * shares
+    }, 0)
+  }, 0)
+
+  const handleAddTicker = useCallback((sym, data) => {
+    // Update snapshot cache immediately so the row shows data right away
+    setDivSnapshots(prev => ({ ...prev, [sym]: data }))
+    // Then refresh the full list in the background
+    setTimeout(refreshDivSnapshots, 2000)
+  }, [refreshDivSnapshots])
 
   return (
     <div className="space-y-5">
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Retirement Accounts</h1>
           <p className="text-xs text-muted mt-0.5">
-            Manually track your 401(k), IRA, Roth, and other retirement balances
+            Track your 401(k), IRA, Roth, and other retirement balances — with per-account dividend portfolios
           </p>
         </div>
+
+        {/* Summary tiles */}
         {accounts.length > 0 && (
-          <div className="text-right shrink-0">
-            <p className="text-[10px] text-muted uppercase tracking-widest">Total Balance</p>
-            <p className="mono text-2xl font-bold text-slate-200 leading-none">{usd(total)}</p>
+          <div className="flex items-stretch gap-3 shrink-0">
+            <div className="text-right">
+              <p className="text-[10px] text-muted uppercase tracking-widest">Total Balance</p>
+              <p className="mono text-2xl font-bold text-slate-200 leading-none">{usd(total)}</p>
+            </div>
+            {totalDivIncome > 0 && (
+              <>
+                <div className="w-px bg-border/50" />
+                <div className="text-right">
+                  <p className="text-[10px] text-muted uppercase tracking-widest">Retirement Div. Income</p>
+                  <p className="mono text-2xl font-bold text-emerald-400 leading-none">{usd(totalDivIncome)}/yr</p>
+                  <p className="text-[10px] text-muted mt-0.5">{usd(totalDivIncome / 12)}/mo</p>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
 
       {error && (
-        <div className="text-red-400 text-sm px-3 py-2 rounded-lg border border-red-400/20 bg-red-400/5">
+        <div className="text-rose-400 text-sm px-3 py-2 rounded-lg border border-rose-400/20 bg-rose-400/5">
           {error}
         </div>
       )}
@@ -295,22 +567,24 @@ export default function RetirementPage() {
       {loading ? (
         <div className="text-sm text-muted py-10 text-center">Loading…</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-3">
           {accounts.map(a => (
-            <AccountCard
+            <AccountBanner
               key={a.id}
               account={a}
               onSave={handleSave}
               onDelete={handleDelete}
+              divSnapshots={divSnapshots}
+              onAddTicker={handleAddTicker}
             />
           ))}
-          <AddCard onAdd={handleAdd} />
+          <AddAccountBanner onAdd={handleAdd} />
         </div>
       )}
 
       {!loading && accounts.length === 0 && (
         <p className="text-xs text-muted text-center -mt-2">
-          Click the card above to add your first account.
+          Click the button above to add your first account.
         </p>
       )}
     </div>
