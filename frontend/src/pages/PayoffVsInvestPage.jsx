@@ -402,10 +402,13 @@ export default function PayoffVsInvestPage() {
    */
   const MONTHS = useMemo(() => {
     if (!mortgageConfig?.startDate || !mortgageConfig?.years) return buildMonthList(null)
-    const [startY, startM0] = mortgageConfig.startDate.split('-').map(Number)
-    const stdEnd = startY + parseInt(mortgageConfig.years || 30)
-    const candidates = [stdEnd, target1?.targetY, target2?.targetY].filter(Boolean)
-    const endYear = Math.max(...candidates)
+    const [startY] = mortgageConfig.startDate.split('-').map(Number)
+    const stdEnd   = startY + parseInt(mortgageConfig.years || 30)
+    // Prefer the target years when set; only fall back to standard payoff if neither target is configured
+    const targetCandidates = [target1?.targetY, target2?.targetY].filter(Boolean)
+    const endYear = targetCandidates.length > 0
+      ? Math.max(...targetCandidates)
+      : stdEnd
     return buildMonthList(endYear)
   }, [mortgageConfig, target1, target2])
 
