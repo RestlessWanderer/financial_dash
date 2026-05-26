@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
-import { BarChart2, Bell, Landmark, Home, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon, Wallet, TrendingUp, Calculator, Milestone, CreditCard, UserCircle2, Pencil, Check, X } from 'lucide-react'
+import { BarChart2, Bell, Landmark, Home, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon, Wallet, TrendingUp, Calculator, Milestone, CreditCard, UserCircle2, Pencil, Check, X, Flame } from 'lucide-react'
 import { useAlertNotifications } from '../hooks/useAlertNotifications'
 import ToastContainer from './ToastContainer'
 
@@ -20,26 +20,29 @@ export default function Layout() {
     return saved
   })
 
-  const [profile,        setProfile]        = useState(() => loadProfile())
-  const [editingProfile, setEditingProfile] = useState(false)
-  const [ageDraft,       setAgeDraft]       = useState('')
-  const [retireDraft,    setRetireDraft]    = useState('')
-  const [divGoalDraft,   setDivGoalDraft]   = useState('')
+  const [profile,          setProfile]          = useState(() => loadProfile())
+  const [editingProfile,   setEditingProfile]   = useState(false)
+  const [ageDraft,         setAgeDraft]         = useState('')
+  const [retireDraft,      setRetireDraft]      = useState('')
+  const [divGoalDraft,     setDivGoalDraft]     = useState('')
+  const [withdrawRateDraft,setWithdrawRateDraft]= useState('')
 
   const openProfile = () => {
-    setAgeDraft(profile.age       ?? '')
-    setRetireDraft(profile.retireAge ?? '')
-    setDivGoalDraft(profile.divGoal  ?? '')
+    setAgeDraft(profile.age           ?? '')
+    setRetireDraft(profile.retireAge  ?? '')
+    setDivGoalDraft(profile.divGoal   ?? '')
+    setWithdrawRateDraft(profile.withdrawRate ?? '')
     setEditingProfile(true)
   }
 
   const cancelProfile = () => setEditingProfile(false)
 
   const saveProfile = () => {
-    const age       = parseInt(ageDraft)     || null
-    const retireAge = parseInt(retireDraft)  || null
-    const divGoal   = parseFloat(divGoalDraft) || null
-    const next = { ...profile, age, retireAge, divGoal }
+    const age          = parseInt(ageDraft)          || null
+    const retireAge    = parseInt(retireDraft)        || null
+    const divGoal      = parseFloat(divGoalDraft)     || null
+    const withdrawRate = parseFloat(withdrawRateDraft)|| null
+    const next = { ...profile, age, retireAge, divGoal, withdrawRate }
     setProfile(next)
     localStorage.setItem(LS_PROFILE, JSON.stringify(next))
     setEditingProfile(false)
@@ -106,6 +109,7 @@ export default function Layout() {
           {nav('/mortgage',  Home,       'Mortgage')}
           {nav('/strategy',  Scale,      'Payoff vs. Invest')}
           {nav('/dividends', Landmark,   'Dividends')}
+          {nav('/fire',      Flame,      'FIRE Journey')}
         </nav>
 
         {/* ── Profile ───────────────────────────────────────────── */}
@@ -144,6 +148,17 @@ export default function Layout() {
                     onChange={e => setDivGoalDraft(e.target.value)}
                     onKeyDown={profileKd}
                     placeholder="e.g. 100000"
+                    className="w-full bg-surface border border-border rounded px-2 py-1 text-xs mono focus:outline-none focus:border-accent transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-200 block mb-0.5">Withdrawal Rate (%)</label>
+                  <input
+                    type="number" min="0.1" max="20" step="0.1"
+                    value={withdrawRateDraft}
+                    onChange={e => setWithdrawRateDraft(e.target.value)}
+                    onKeyDown={profileKd}
+                    placeholder="e.g. 4"
                     className="w-full bg-surface border border-border rounded px-2 py-1 text-xs mono focus:outline-none focus:border-accent transition-colors"
                   />
                 </div>
