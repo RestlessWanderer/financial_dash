@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
-import { BarChart2, Bell, Landmark, Home, Stethoscope, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon, Wallet, TrendingUp, Calculator } from 'lucide-react'
+import { BarChart2, Bell, Landmark, Home, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon, Wallet, TrendingUp, Calculator, Milestone } from 'lucide-react'
 import { useAlertNotifications } from '../hooks/useAlertNotifications'
 import ToastContainer from './ToastContainer'
+
 
 export default function Layout() {
   const { toasts, dismiss } = useAlertNotifications()
@@ -43,12 +44,9 @@ export default function Layout() {
       <aside className="w-56 shrink-0 flex flex-col border-r border-border bg-panel overflow-y-auto">
 
         {/* Logo / brand */}
-        <div className="px-4 py-4 border-b border-border flex items-center gap-2.5 shrink-0">
-          <div className="relative shrink-0">
-            <Stethoscope size={18} className="text-accent" />
-            <span className="absolute -bottom-0.5 -right-1.5 text-[9px] font-black text-green-400 leading-none">$</span>
-          </div>
-          <span className="font-semibold tracking-tight text-sm leading-tight text-slate-200">Financial Wellness</span>
+        <div className="px-4 py-5 border-b border-border flex items-center gap-3 shrink-0">
+          <Milestone size={22} className="text-accent shrink-0" />
+          <span className="font-semibold tracking-tight text-base leading-tight text-slate-200">Financial Journey</span>
         </div>
 
         {/* Nav links */}
