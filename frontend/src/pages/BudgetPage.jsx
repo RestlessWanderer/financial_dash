@@ -3,8 +3,9 @@ import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react'
 
 /* ── Constants ────────────────────────────────────────────────────── */
 const LS_BUDGET   = 'budget_data'
-const LS_DEFAULTS = 'budget_defaults'      // { paycheck, housing, utilities, groceries, custom_0, … }
+const LS_DEFAULTS = 'budget_defaults'
 const LS_CUSTOM   = 'budget_custom_labels'
+const LS_NE       = 'budget_ne_flags'       // array of keys marked non-essential
 const LS_MORTGAGE = 'mortgage_config'
 
 const DEFAULT_CUSTOM_LABELS = ['Car Payment', 'Insurance', 'Subscriptions', 'Dining', 'Misc']
@@ -54,10 +55,6 @@ function load(key, fallback = {}) {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback } catch { return fallback }
 }
 
-/**
- * Resolve the effective value for a field in a month row.
- * Returns the month-specific override if set, otherwise the column default.
- */
 function effective(rowData, defaults, key) {
   const v = rowData?.[key]
   if (v !== undefined && v !== '') return parseFloat(v) || 0
@@ -66,7 +63,6 @@ function effective(rowData, defaults, key) {
   return 0
 }
 
-/** Remaining = (pay1 + pay2) − all expenses, using effective values */
 function calcRemaining(rowData, defaults, customLabels) {
   const pay1      = effective(rowData, defaults, 'pay1')
   const pay2      = effective(rowData, defaults, 'pay2')
@@ -77,7 +73,24 @@ function calcRemaining(rowData, defaults, customLabels) {
   return (pay1 + pay2) - housing - utilities - groceries - customSum
 }
 
-/* ── Default row (sticky below headers) ──────────────────────────── */
+/* ── NE badge ─────────────────────────────────────────────────────── */
+function NEBadge({ active, onToggle }) {
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onToggle() }}
+      title={active ? 'Non-Essential — click to unmark' : 'Mark as Non-Essential'}
+      className={`text-[9px] font-black px-1.5 py-0.5 rounded border transition-colors leading-none ${
+        active
+          ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30'
+          : 'bg-white/[0.04] border-border/50 text-muted/50 hover:border-amber-500/30 hover:text-amber-400/70'
+      }`}
+    >
+      NE
+    </button>
+  )
+}
+
+/* ── Default row ──────────────────────────────────────────────────── */
 function DefaultsRow({ defaults, customLabels, onChange }) {
   const allKeys = [...PAY_KEYS, ...FIXED_KEYS, ...customLabels.map((_, i) => `custom_${i}`)]
 
@@ -104,7 +117,6 @@ function DefaultsRow({ defaults, customLabels, onChange }) {
         </span>
       </td>
       {allKeys.map(key => cell(key))}
-      {/* Remaining — not editable for the default row */}
       <td className="px-2 py-2 border-b border-border/60 text-right">
         <span className="text-[10px] text-muted/40 italic">per month</span>
       </td>
@@ -157,6 +169,7 @@ export default function BudgetPage() {
   const [budgetData,     setBudgetData]     = useState(() => load(LS_BUDGET, {}))
   const [defaults,       setDefaults]       = useState(() => load(LS_DEFAULTS, {}))
   const [customLabels,   setCustomLabels]   = useState(() => load(LS_CUSTOM, DEFAULT_CUSTOM_LABELS))
+  const [neFlags,        setNeFlags]        = useState(() => new Set(load(LS_NE, [])))
   const [editingLabel,   setEditingLabel]   = useState(null)
   const [labelDraft,     setLabelDraft]     = useState('')
   const [mortgageConfig, setMortgageConfig] = useState(null)
@@ -169,7 +182,6 @@ export default function BudgetPage() {
     } catch { /* ignore */ }
   }, [])
 
-  /* Month list mirrors Payoff vs Invest timeline */
   const MONTHS = useMemo(() => {
     if (!mortgageConfig?.startDate || !mortgageConfig?.years) return buildMonthList(null)
     const [startY] = mortgageConfig.startDate.split('-').map(Number)
@@ -181,7 +193,6 @@ export default function BudgetPage() {
     return buildMonthList(endYear)
   }, [mortgageConfig])
 
-  /* Year groups */
   const yearGroups = useMemo(() => {
     const map = new Map()
     for (const ym of MONTHS) {
@@ -200,7 +211,16 @@ export default function BudgetPage() {
     })
   }, [])
 
-  /* Default value change */
+  /* NE flag toggle */
+  const toggleNE = useCallback((key) => {
+    setNeFlags(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      localStorage.setItem(LS_NE, JSON.stringify([...next]))
+      return next
+    })
+  }, [])
+
   const handleDefaultChange = useCallback((key, val) => {
     setDefaults(prev => {
       const next = { ...prev, [key]: val }
@@ -209,7 +229,6 @@ export default function BudgetPage() {
     })
   }, [])
 
-  /* Month field change */
   const handleChange = useCallback((ym, key, val) => {
     setBudgetData(prev => {
       const next = { ...prev, [ym]: { ...(prev[ym] ?? {}), [key]: val } }
@@ -218,7 +237,6 @@ export default function BudgetPage() {
     })
   }, [])
 
-  /* Custom label rename */
   const startRename  = (i) => { setEditingLabel(i); setLabelDraft(customLabels[i]) }
   const commitRename = (i) => {
     const trimmed = labelDraft.trim()
@@ -241,12 +259,18 @@ export default function BudgetPage() {
   }
 
   const removeCustomField = (i) => {
+    const key = `custom_${i}`
+    // Remove NE flag for this key
+    setNeFlags(prev => {
+      const next = new Set(prev); next.delete(key)
+      localStorage.setItem(LS_NE, JSON.stringify([...next]))
+      return next
+    })
     setCustomLabels(prev => {
       const next = prev.filter((_, idx) => idx !== i)
       localStorage.setItem(LS_CUSTOM, JSON.stringify(next))
       return next
     })
-    // Remove default for that key and re-index above it
     setDefaults(prev => {
       const next = { ...prev }
       delete next[`custom_${i}`]
@@ -256,7 +280,6 @@ export default function BudgetPage() {
       localStorage.setItem(LS_DEFAULTS, JSON.stringify(next))
       return next
     })
-    // Remove from all months and re-index
     setBudgetData(prev => {
       const next = {}
       for (const [ym, row] of Object.entries(prev)) {
@@ -272,7 +295,6 @@ export default function BudgetPage() {
     })
   }
 
-  /* Year-level summary using effective values */
   const yearStats = useMemo(() => {
     const stats = {}
     for (const { year, months } of yearGroups) {
@@ -286,6 +308,12 @@ export default function BudgetPage() {
     }
     return stats
   }, [yearGroups, budgetData, defaults, customLabels])
+
+  /* NE summary — total non-essential spend per month (using defaults, custom only) */
+  const neTotal = useMemo(() => {
+    const keys = customLabels.map((_, i) => `custom_${i}`).filter(k => neFlags.has(k))
+    return keys.reduce((s, k) => s + (parseFloat(defaults[k]) || 0), 0)
+  }, [neFlags, defaults, customLabels])
 
   return (
     <div className="space-y-5">
@@ -302,7 +330,14 @@ export default function BudgetPage() {
       {/* ── Category chip editor ── */}
       <div className="card space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-slate-300">Expense Categories</p>
+          <div className="flex items-center gap-3">
+            <p className="text-xs font-medium text-slate-300">Expense Categories</p>
+            {neTotal > 0 && (
+              <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                {usd(neTotal)}/mo non-essential
+              </span>
+            )}
+          </div>
           {customLabels.length < 10 && (
             <button onClick={addCustomField} className="flex items-center gap-1 text-[11px] text-accent hover:text-accent/80 transition-colors">
               <Plus size={11} /> Add category
@@ -310,38 +345,46 @@ export default function BudgetPage() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          {FIXED_LABELS.map(label => (
-            <span key={label} className="px-2.5 py-1 rounded-full bg-white/[0.05] border border-border/60 text-xs text-muted select-none">
-              {label}
-            </span>
-          ))}
-          {customLabels.map((label, i) => (
-            <div key={i} className="flex items-center gap-1 group">
-              {editingLabel === i ? (
-                <input
-                  autoFocus value={labelDraft}
-                  onChange={e => setLabelDraft(e.target.value)}
-                  onBlur={() => commitRename(i)}
-                  onKeyDown={e => { if (e.key === 'Enter') commitRename(i); if (e.key === 'Escape') setEditingLabel(null) }}
-                  className="px-2 py-0.5 rounded-full bg-accent/10 border border-accent/40 text-xs text-accent focus:outline-none w-28"
-                />
-              ) : (
-                <button onClick={() => startRename(i)}
-                  className="px-2.5 py-1 rounded-full bg-accent/[0.07] border border-accent/25 text-xs text-accent hover:bg-accent/15 transition-colors"
-                  title="Click to rename">
-                  {label}
-                </button>
-              )}
-              <button onClick={() => removeCustomField(i)}
-                className="p-0.5 text-muted hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
-                title="Remove category">
-                <Trash2 size={11} />
-              </button>
+          {/* Fixed categories — no NE flag (always essential) */}
+          {FIXED_KEYS.map((key, i) => (
+            <div key={key} className="flex items-center gap-1">
+              <span className="px-2.5 py-1 rounded-full bg-white/[0.05] border border-border/60 text-xs text-muted select-none">
+                {FIXED_LABELS[i]}
+              </span>
             </div>
           ))}
+          {/* Custom categories */}
+          {customLabels.map((label, i) => {
+            const key = `custom_${i}`
+            return (
+              <div key={i} className="flex items-center gap-1 group">
+                {editingLabel === i ? (
+                  <input
+                    autoFocus value={labelDraft}
+                    onChange={e => setLabelDraft(e.target.value)}
+                    onBlur={() => commitRename(i)}
+                    onKeyDown={e => { if (e.key === 'Enter') commitRename(i); if (e.key === 'Escape') setEditingLabel(null) }}
+                    className="px-2 py-0.5 rounded-full bg-accent/10 border border-accent/40 text-xs text-accent focus:outline-none w-28"
+                  />
+                ) : (
+                  <button onClick={() => startRename(i)}
+                    className="px-2.5 py-1 rounded-full bg-accent/[0.07] border border-accent/25 text-xs text-accent hover:bg-accent/15 transition-colors"
+                    title="Click to rename">
+                    {label}
+                  </button>
+                )}
+                <NEBadge active={neFlags.has(key)} onToggle={() => toggleNE(key)} />
+                <button onClick={() => removeCustomField(i)}
+                  className="p-0.5 text-muted hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
+                  title="Remove category">
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            )
+          })}
         </div>
         <p className="text-[10px] text-muted">
-          Click a custom category name to rename it. Fixed categories cannot be removed.
+          Click a custom category name to rename it. Click <span className="text-amber-400 font-semibold">NE</span> to flag a custom category as <span className="text-amber-400">Non-Essential</span> — spending that could be reduced or eliminated. Fixed categories (Housing, Utilities, Groceries) are always considered essential.
         </p>
       </div>
 
@@ -349,21 +392,26 @@ export default function BudgetPage() {
       <div className="card p-0 overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            {/* Column headers */}
             <tr className="text-[11px] text-muted uppercase tracking-wide bg-white/[0.02] border-b border-border">
               <th className="px-3 py-3 text-left w-36">Month</th>
               <th className="px-2 py-3 text-right min-w-[100px] text-slate-300">Pay 1</th>
               <th className="px-2 py-3 text-right min-w-[100px] text-slate-300">Pay 2</th>
-              {FIXED_LABELS.map(l => (
-                <th key={l} className="px-2 py-3 text-right min-w-[90px]">{l}</th>
+              {FIXED_KEYS.map((key, i) => (
+                <th key={key} className="px-2 py-3 text-right min-w-[90px]">
+                  {FIXED_LABELS[i]}
+                </th>
               ))}
               {customLabels.map((l, i) => (
-                <th key={i} className="px-2 py-3 text-right min-w-[90px]">{l}</th>
+                <th key={i} className="px-2 py-3 text-right min-w-[90px]">
+                  <span className="flex items-center justify-end gap-1">
+                    {l}
+                    {neFlags.has(`custom_${i}`) && <span className="text-[8px] font-black text-amber-400 leading-none">NE</span>}
+                  </span>
+                </th>
               ))}
               <th className="px-2 py-3 text-right min-w-[90px] text-emerald-400/80">Remaining</th>
             </tr>
 
-            {/* Default values row */}
             <DefaultsRow
               defaults={defaults}
               customLabels={customLabels}
@@ -372,13 +420,12 @@ export default function BudgetPage() {
           </thead>
           <tbody>
             {yearGroups.map(({ year, months }) => {
-              const stats     = yearStats[year] ?? {}
+              const stats      = yearStats[year] ?? {}
               const isExpanded = expanded.has(year)
-              const remCls    = (stats.remaining ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              const remCls     = (stats.remaining ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
 
               return (
                 <Fragment key={year}>
-                  {/* Year summary row */}
                   <tr
                     onClick={() => toggleYear(year)}
                     className="border-b border-border/60 cursor-pointer select-none hover:bg-white/[0.03] transition-colors bg-white/[0.01]"
@@ -392,7 +439,7 @@ export default function BudgetPage() {
                     <td className="px-2 py-3 text-right mono text-slate-300">
                       {stats.paycheck > 0 ? usd(stats.paycheck) : <span className="text-muted/40">—</span>}
                     </td>
-                    {Array.from({ length: 3 + customLabels.length }).map((_, i) => (
+                    {Array.from({ length: 1 + FIXED_KEYS.length + customLabels.length }).map((_, i) => (
                       <td key={i} className="px-2 py-3 text-right text-muted/30">—</td>
                     ))}
                     <td className="px-2 py-3 text-right">
@@ -402,7 +449,6 @@ export default function BudgetPage() {
                     </td>
                   </tr>
 
-                  {/* Month detail rows */}
                   {isExpanded && months.map(ym => (
                     <MonthRow
                       key={ym}
