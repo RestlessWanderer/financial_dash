@@ -282,7 +282,15 @@ function ETradePanel() {
       const data = await api.etradePortfolio()
       setPortfolio(data)
       setExpandedAcct(new Set(data.accounts.map(a => a.accountIdKey)))
-    } catch (e) { setError(e.message) }
+    } catch (e) {
+      if (e.status === 401) {
+        // Token expired — backend already cleared it; refresh status so UI
+        // switches back to the "Connect Account" flow automatically.
+        setPortfolio(null)
+        await loadStatus()
+      }
+      setError(e.message)
+    }
     finally { setLoading(false) }
   }
 
@@ -312,7 +320,9 @@ function ETradePanel() {
           <div>
             <p className="text-sm font-semibold">E*TRADE Account</p>
             <p className="text-xs text-muted">
-              {status.has_access ? 'Connected — live portfolio positions' : 'Not connected'}
+              {status.has_access
+                ? 'Connected — live portfolio positions · session expires at midnight ET'
+                : 'Not connected'}
             </p>
           </div>
         </div>
@@ -340,8 +350,17 @@ function ETradePanel() {
       </div>
 
       {error && (
-        <div className="text-red-400 text-xs px-3 py-2 rounded-lg border border-red-400/20 bg-red-400/5 flex items-center gap-2">
-          <AlertTriangle size={12} className="shrink-0" /> {error}
+        <div className="text-rose-400 text-xs px-3 py-2 rounded-lg border border-rose-400/20 bg-rose-400/5 flex items-start gap-2">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+          <div>
+            <span>{error}</span>
+            {error.toLowerCase().includes('expired') && (
+              <p className="mt-1 text-muted">
+                E*TRADE OAuth tokens expire daily at midnight ET. Click{' '}
+                <strong className="text-slate-300">Connect Account</strong> to re-authorize.
+              </p>
+            )}
+          </div>
         </div>
       )}
 

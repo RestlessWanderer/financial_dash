@@ -235,8 +235,23 @@ def etrade_portfolio(session: Session = Depends(get_session)):
     # 1. Fetch account list
     try:
         r = _session().get(f"{ETRADE_BASE_PROD}/v1/accounts/list.json")
+        if r.status_code == 401:
+            # Access token expired (E*TRADE tokens expire daily at midnight ET).
+            # Clear the stale tokens so the UI knows to prompt for re-auth.
+            cred.access_token  = ""
+            cred.access_secret = ""
+            cred.updated_at    = datetime.utcnow()
+            session.add(cred)
+            session.commit()
+            raise HTTPException(
+                401,
+                "E*TRADE session expired — tokens are valid only until midnight ET each day. "
+                "Please reconnect your account.",
+            )
         r.raise_for_status()
         accounts_data = r.json()
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(502, f"E*TRADE accounts error: {e}")
 
