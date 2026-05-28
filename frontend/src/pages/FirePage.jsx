@@ -26,18 +26,72 @@ function load(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback } catch { return fallback }
 }
 
-function calcTotalInterest(loan) {
+/** Current remaining balance of a loan, amortized from startDate to today. */
+function calcLoanCurrentBalance(loan) {
   const principal = parseFloat(loan.amount) || 0
   const rate      = parseFloat(loan.rate)   || 0
   const termYears = parseFloat(loan.term)   || 0
-  if (principal <= 0 || termYears <= 0) return 0
-  if (loan.interestType === 'simple') return principal * (rate / 100) * termYears
+  if (principal <= 0 || termYears <= 0) return principal
+  if (!loan.startDate) return principal
+  const [startY, startM] = loan.startDate.split('-').map(Number)
+  const now     = new Date()
+  const elapsed = Math.max(0,
+    (now.getFullYear() - startY) * 12 + (now.getMonth() - (startM - 1))
+  )
+  const totalMonths = Math.round(termYears * 12)
+  if (elapsed >= totalMonths) return 0
+  const monthlyRate = rate / 100 / 12
+  if (loan.interestType === 'fixed') {
+    const pow     = monthlyRate > 0 ? Math.pow(1 + monthlyRate, totalMonths) : 1
+    const stdPmt  = monthlyRate > 0 ? principal * monthlyRate * pow / (pow - 1) : principal / totalMonths
+    const payment = parseFloat(loan.payment) > 0 ? parseFloat(loan.payment) : stdPmt
+    let balance = principal
+    for (let i = 0; i < elapsed; i++) {
+      if (balance < 0.01) { balance = 0; break }
+      balance = Math.max(0, balance - Math.min(Math.max(0, payment - balance * monthlyRate), balance))
+    }
+    return Math.round(balance * 100) / 100
+  }
+  if (loan.interestType === 'simple') {
+    const monthlyInterest = principal * (rate / 100) / 12
+    const stdPmt  = principal / totalMonths + monthlyInterest
+    const payment = parseFloat(loan.payment) > 0 ? parseFloat(loan.payment) : stdPmt
+    let balance = principal
+    for (let i = 0; i < elapsed; i++) {
+      if (balance < 0.01) { balance = 0; break }
+      balance = Math.max(0, balance - Math.min(Math.max(0, payment - monthlyInterest), balance))
+    }
+    return Math.round(balance * 100) / 100
+  }
+  return principal
+}
+
+/** Remaining interest from current balance to payoff. */
+function calcRemainingInterest(loan) {
+  const currentBalance = calcLoanCurrentBalance(loan)
+  const rate           = parseFloat(loan.rate)   || 0
+  const termYears      = parseFloat(loan.term)   || 0
+  if (currentBalance <= 0 || termYears <= 0) return 0
+  const totalMonths = Math.round(termYears * 12)
+  if (!loan.startDate) {
+    const principal = parseFloat(loan.amount) || 0
+    if (loan.interestType === 'simple') return principal * (rate / 100) * termYears
+    if (rate === 0) return 0
+    const r = rate / 100 / 12; const pow = Math.pow(1 + r, totalMonths)
+    return (principal * r * pow / (pow - 1)) * totalMonths - principal
+  }
+  const [startY, startM] = loan.startDate.split('-').map(Number)
+  const now      = new Date()
+  const elapsed  = Math.max(0, (now.getFullYear() - startY) * 12 + (now.getMonth() - (startM - 1)))
+  const remaining = Math.max(0, totalMonths - elapsed)
+  if (remaining === 0) return 0
+  if (loan.interestType === 'simple') {
+    return (parseFloat(loan.amount) || 0) * (rate / 100) * (remaining / 12)
+  }
   if (loan.interestType === 'fixed') {
     if (rate === 0) return 0
-    const r   = rate / 100 / 12
-    const n   = termYears * 12
-    const pow = Math.pow(1 + r, n)
-    return (principal * r * pow / (pow - 1)) * n - principal
+    const r = rate / 100 / 12; const pow = Math.pow(1 + r, remaining)
+    return Math.round((currentBalance * r * pow / (pow - 1)) * remaining - currentBalance)
   }
   return 0
 }
@@ -227,10 +281,10 @@ export default function FirePage() {
   }, [neFlags, budgetDefaults, customLabels])
   const neTotalMonthly = neItems.reduce((s, i) => s + i.monthly, 0)
 
-  // Loans
-  const totalLoanInterest = loans.reduce((s, l) => s + (calcTotalInterest(l) || 0), 0)
-  const totalLoanPrincipal = loans.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0)
-  const loansCleared = loans.length === 0 || totalLoanPrincipal === 0
+  // Loans — use current balance for "cleared" check and cost display
+  const totalLoanBalance  = loans.reduce((s, l) => s + calcLoanCurrentBalance(l), 0)
+  const totalLoanInterest = loans.reduce((s, l) => s + calcRemainingInterest(l), 0)
+  const loansCleared = loans.length === 0 || totalLoanBalance === 0
 
   // Mortgage
   const mortgageBalance = calcMortgageBalance(mortgageConfig, mortgageExtras)
@@ -375,19 +429,23 @@ export default function FirePage() {
           ) : (
             <>
               <div className="space-y-1.5">
-                {loans.map(loan => (
-                  <div key={loan.id} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-300">{loan.name}</span>
-                    <div className="text-right">
-                      <span className="mono text-slate-200">{usd(parseFloat(loan.amount))}</span>
-                      <span className="text-muted ml-2">+{usd(calcTotalInterest(loan))} interest</span>
+                {loans.map(loan => {
+                  const curBal = calcLoanCurrentBalance(loan)
+                  const remInt = calcRemainingInterest(loan)
+                  return (
+                    <div key={loan.id} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300">{loan.name}</span>
+                      <div className="text-right">
+                        <span className="mono text-slate-200">{usd(curBal)}</span>
+                        <span className="text-muted ml-2">+{usd(remInt)} interest</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
               <div className="flex items-center justify-between text-xs border-t border-border/40 pt-2">
                 <span className="font-medium text-slate-200">Total cost to clear</span>
-                <span className="mono text-rose-400 font-semibold">{usd(totalLoanPrincipal + totalLoanInterest)}</span>
+                <span className="mono text-rose-400 font-semibold">{usd(totalLoanBalance + totalLoanInterest)}</span>
               </div>
             </>
           )}

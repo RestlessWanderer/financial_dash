@@ -92,22 +92,96 @@ function calcMortgageBalance(config, extras) {
   return Math.round(balance * 100) / 100
 }
 
-/** Total interest over the life of a single loan. */
-function calcLoanInterest(loan) {
+/** Current remaining balance of a loan, amortized from startDate to today. */
+function calcLoanCurrentBalance(loan) {
   const principal = parseFloat(loan.amount) || 0
   const rate      = parseFloat(loan.rate)   || 0
   const termYears = parseFloat(loan.term)   || 0
-  if (principal <= 0 || termYears <= 0) return 0
-  if (loan.interestType === 'simple') {
-    return principal * (rate / 100) * termYears
-  }
-  // Fixed amortizing
-  if (rate === 0) return 0
+  if (principal <= 0 || termYears <= 0) return principal   // fallback: original amount
+  if (!loan.startDate) return principal
+
+  const [startY, startM] = loan.startDate.split('-').map(Number)
+  const now     = new Date()
+  const elapsed = Math.max(0,
+    (now.getFullYear() - startY) * 12 + (now.getMonth() - (startM - 1))
+  )
+  const totalMonths = Math.round(termYears * 12)
+  if (elapsed >= totalMonths) return 0
+
   const monthlyRate = rate / 100 / 12
-  const totalMonths = termYears * 12
-  const pow         = Math.pow(1 + monthlyRate, totalMonths)
-  const payment     = principal * monthlyRate * pow / (pow - 1)
-  return (payment * totalMonths) - principal
+
+  if (loan.interestType === 'fixed') {
+    const pow        = monthlyRate > 0 ? Math.pow(1 + monthlyRate, totalMonths) : 1
+    const stdPayment = monthlyRate > 0 ? principal * monthlyRate * pow / (pow - 1) : principal / totalMonths
+    const enteredPmt = parseFloat(loan.payment) || 0
+    const payment    = enteredPmt > 0 ? enteredPmt : stdPayment
+    let balance = principal
+    for (let i = 0; i < elapsed; i++) {
+      if (balance < 0.01) { balance = 0; break }
+      const interest = balance * monthlyRate
+      balance = Math.max(0, balance - Math.min(Math.max(0, payment - interest), balance))
+    }
+    return Math.round(balance * 100) / 100
+  }
+
+  if (loan.interestType === 'simple') {
+    const monthlyInterest = principal * (rate / 100) / 12
+    const stdPayment = principal / totalMonths + monthlyInterest
+    const enteredPmt = parseFloat(loan.payment) || 0
+    const payment    = enteredPmt > 0 ? enteredPmt : stdPayment
+    let balance = principal
+    for (let i = 0; i < elapsed; i++) {
+      if (balance < 0.01) { balance = 0; break }
+      const interest = principal * (rate / 100) / 12
+      balance = Math.max(0, balance - Math.min(Math.max(0, payment - interest), balance))
+    }
+    return Math.round(balance * 100) / 100
+  }
+
+  return principal
+}
+
+/** Remaining interest from today forward (current balance → payoff). */
+function calcLoanRemainingInterest(loan) {
+  const currentBalance = calcLoanCurrentBalance(loan)
+  const rate           = parseFloat(loan.rate)   || 0
+  const termYears      = parseFloat(loan.term)   || 0
+  if (currentBalance <= 0 || termYears <= 0) return 0
+
+  const totalMonths = Math.round(termYears * 12)
+  if (!loan.startDate) {
+    // No start date — fall back to full-life interest
+    if (loan.interestType === 'simple') return (parseFloat(loan.amount) || 0) * (rate / 100) * termYears
+    if (rate === 0) return 0
+    const monthlyRate = rate / 100 / 12
+    const pow         = Math.pow(1 + monthlyRate, totalMonths)
+    const payment     = (parseFloat(loan.amount) || 0) * monthlyRate * pow / (pow - 1)
+    return (payment * totalMonths) - (parseFloat(loan.amount) || 0)
+  }
+
+  const [startY, startM] = loan.startDate.split('-').map(Number)
+  const now      = new Date()
+  const elapsed  = Math.max(0,
+    (now.getFullYear() - startY) * 12 + (now.getMonth() - (startM - 1))
+  )
+  const remaining = Math.max(0, totalMonths - elapsed)
+  if (remaining === 0) return 0
+
+  if (loan.interestType === 'simple') {
+    // Simple interest on original principal for remaining term
+    const principal = parseFloat(loan.amount) || 0
+    return principal * (rate / 100) * (remaining / 12)
+  }
+
+  if (loan.interestType === 'fixed') {
+    if (rate === 0) return 0
+    const monthlyRate = rate / 100 / 12
+    const pow         = Math.pow(1 + monthlyRate, remaining)
+    const payment     = currentBalance * monthlyRate * pow / (pow - 1)
+    return Math.round((payment * remaining - currentBalance) * 100) / 100
+  }
+
+  return 0
 }
 
 /** Projected annual dividend income from owned shares. */
@@ -294,14 +368,16 @@ export default function DashboardPage() {
       })()
     : null
 
-  // Loan totals (from localStorage)
-  const loanInterestTotal  = loans.reduce((s, l) => s + calcLoanInterest(l), 0)
+  // Loan totals (from localStorage) — use current balance + remaining interest
+  const loanCurrentTotal   = loans.reduce((s, l) => s + calcLoanCurrentBalance(l), 0)
+  const loanInterestTotal  = loans.reduce((s, l) => s + calcLoanRemainingInterest(l), 0)
   const loanPrincipalTotal = loans.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0)
   const hasLoans           = loans.length > 0
 
-  // Net worth = all assets minus all liabilities (including total loan interest as a drag)
+  // Net worth = all assets minus all liabilities
+  // Loan liability = current balance + remaining interest (accurate live figure)
   const netAssets      = retirementTotal + workStockTotal + brokerageTotal + assetValue + liquidTotal
-  const netLiabilities = assetDebt + (hasMortgage ? mortgageBalance : 0) + loanInterestTotal
+  const netLiabilities = assetDebt + (hasMortgage ? mortgageBalance : 0) + loanCurrentTotal + loanInterestTotal
   const netWorth       = netAssets - netLiabilities
   const nwReady        = !loading
 
@@ -384,6 +460,9 @@ export default function DashboardPage() {
                 <NWMiniCard label="Mortgage"       value={mortgageBalance}   sign="−" loading={loading} liability />
               )}
               {hasLoans && (
+                <NWMiniCard label="Loan Balance"   value={loanCurrentTotal}  sign="−" loading={false}   liability />
+              )}
+              {hasLoans && loanInterestTotal > 0 && (
                 <NWMiniCard label="Loan Interest"  value={loanInterestTotal} sign="−" loading={false}   liability />
               )}
             </div>
@@ -574,14 +653,14 @@ export default function DashboardPage() {
           icon={CreditCard}
           iconClass="bg-rose-500/10 text-rose-400"
           title="Loans"
-          primary={hasLoans ? usd(loanInterestTotal) : 'None'}
-          primaryLabel={hasLoans ? 'total interest drag' : null}
+          primary={hasLoans ? usd(loanCurrentTotal) : 'None'}
+          primaryLabel={hasLoans ? `current balance · ${loans.length} loan${loans.length !== 1 ? 's' : ''}` : null}
           primaryClass={hasLoans ? 'text-rose-400' : 'text-slate-400'}
           loading={false}
           rows={hasLoans ? [
-            ['Principal',      usd(loanPrincipalTotal),                    'text-slate-300'],
-            [`${loans.length} loan${loans.length !== 1 ? 's' : ''}`, '', 'text-muted'],
-            ['Net worth drag', `−${usd(loanInterestTotal)}`,               'text-rose-400'],
+            ['Remaining interest', usd(loanInterestTotal),                        'text-rose-400/80'],
+            ['Original principal', usd(loanPrincipalTotal),                       'text-slate-400'],
+            ['Net worth drag',     `−${usd(loanCurrentTotal + loanInterestTotal)}`, 'text-rose-400'],
           ] : []}
         />
 

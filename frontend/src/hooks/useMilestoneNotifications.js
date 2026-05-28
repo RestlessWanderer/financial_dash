@@ -26,18 +26,70 @@ function load(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback } catch { return fallback }
 }
 
-function calcTotalInterest(loan) {
+function calcLoanCurrentBalance(loan) {
   const principal = parseFloat(loan.amount) || 0
   const rate      = parseFloat(loan.rate)   || 0
   const termYears = parseFloat(loan.term)   || 0
-  if (principal <= 0 || termYears <= 0) return 0
-  if (loan.interestType === 'simple') return principal * (rate / 100) * termYears
+  if (principal <= 0 || termYears <= 0) return principal
+  if (!loan.startDate) return principal
+  const [startY, startM] = loan.startDate.split('-').map(Number)
+  const now     = new Date()
+  const elapsed = Math.max(0,
+    (now.getFullYear() - startY) * 12 + (now.getMonth() - (startM - 1))
+  )
+  const totalMonths = Math.round(termYears * 12)
+  if (elapsed >= totalMonths) return 0
+  const monthlyRate = rate / 100 / 12
+  if (loan.interestType === 'fixed') {
+    const pow     = monthlyRate > 0 ? Math.pow(1 + monthlyRate, totalMonths) : 1
+    const stdPmt  = monthlyRate > 0 ? principal * monthlyRate * pow / (pow - 1) : principal / totalMonths
+    const payment = parseFloat(loan.payment) > 0 ? parseFloat(loan.payment) : stdPmt
+    let balance = principal
+    for (let i = 0; i < elapsed; i++) {
+      if (balance < 0.01) { balance = 0; break }
+      balance = Math.max(0, balance - Math.min(Math.max(0, payment - balance * monthlyRate), balance))
+    }
+    return Math.round(balance * 100) / 100
+  }
+  if (loan.interestType === 'simple') {
+    const monthlyInterest = principal * (rate / 100) / 12
+    const stdPmt  = principal / totalMonths + monthlyInterest
+    const payment = parseFloat(loan.payment) > 0 ? parseFloat(loan.payment) : stdPmt
+    let balance = principal
+    for (let i = 0; i < elapsed; i++) {
+      if (balance < 0.01) { balance = 0; break }
+      balance = Math.max(0, balance - Math.min(Math.max(0, payment - monthlyInterest), balance))
+    }
+    return Math.round(balance * 100) / 100
+  }
+  return principal
+}
+
+function calcRemainingInterest(loan) {
+  const currentBalance = calcLoanCurrentBalance(loan)
+  const rate           = parseFloat(loan.rate)   || 0
+  const termYears      = parseFloat(loan.term)   || 0
+  if (currentBalance <= 0 || termYears <= 0) return 0
+  const totalMonths = Math.round(termYears * 12)
+  if (!loan.startDate) {
+    const principal = parseFloat(loan.amount) || 0
+    if (loan.interestType === 'simple') return principal * (rate / 100) * termYears
+    if (rate === 0) return 0
+    const r = rate / 100 / 12; const pow = Math.pow(1 + r, totalMonths)
+    return (principal * r * pow / (pow - 1)) * totalMonths - principal
+  }
+  const [startY, startM] = loan.startDate.split('-').map(Number)
+  const now      = new Date()
+  const elapsed  = Math.max(0, (now.getFullYear() - startY) * 12 + (now.getMonth() - (startM - 1)))
+  const remaining = Math.max(0, totalMonths - elapsed)
+  if (remaining === 0) return 0
+  if (loan.interestType === 'simple') {
+    return (parseFloat(loan.amount) || 0) * (rate / 100) * (remaining / 12)
+  }
   if (loan.interestType === 'fixed') {
     if (rate === 0) return 0
-    const r = rate / 100 / 12
-    const n = termYears * 12
-    const pow = Math.pow(1 + r, n)
-    return (principal * r * pow / (pow - 1)) * n - principal
+    const r = rate / 100 / 12; const pow = Math.pow(1 + r, remaining)
+    return Math.max(0, Math.round((currentBalance * r * pow / (pow - 1)) * remaining - currentBalance))
   }
   return 0
 }
@@ -79,19 +131,20 @@ export function useMilestoneNotifications(addToast) {
     const milestones = []
 
     // ── Loans cleared ──────────────────────────────────────────────
-    if (loans.length === 0) {
+    const totalLoanBalance = loans.reduce((s, l) => s + calcLoanCurrentBalance(l), 0)
+    if (loans.length === 0 || totalLoanBalance === 0) {
       milestones.push({
         id: 'loans_cleared',
         emoji: '🎉',
         title: 'Debt Free!',
-        body: 'All loans have been removed — you\'re free of non-mortgage debt!',
+        body: 'All loans paid off — you\'re free of non-mortgage debt!',
       })
     } else {
-      // Individual loan milestone: total cost drops below principal (interest mostly paid)
+      // Individual loan milestone: remaining interest < 10% of original principal
       loans.forEach(loan => {
-        const principal = parseFloat(loan.amount) || 0
-        const interest  = calcTotalInterest(loan)
-        if (principal > 0 && interest < principal * 0.1) {
+        const principal   = parseFloat(loan.amount) || 0
+        const remInterest = calcRemainingInterest(loan)
+        if (principal > 0 && remInterest < principal * 0.1) {
           milestones.push({
             id: `loan_almost_clear_${loan.id}`,
             emoji: '💪',
