@@ -178,14 +178,24 @@ export default function MortgagePage() {
 
     const monthlyRate = mortgage.rate / 100 / 12
     const reqPayment  = calcPayment(mortgage.principal, monthlyRate, targetMonths)
-    const extraNeeded = Math.max(0, reqPayment - stdSched.payment)
+    const extraNeeded = Math.ceil(Math.max(0, reqPayment - stdSched.payment))
+
+    // Build a flat-extra schedule to get accurate total interest
+    const flatExtras = {}
+    for (let i = 0; i < naturalMonths; i++) flatExtras[String(i)] = extraNeeded
+    const targetSched   = buildSchedule(
+      mortgage.principal, mortgage.rate, mortgage.years,
+      mortgage.startYear, mortgage.startMonth0, flatExtras
+    )
+    const interestSaved = r2(stdSched.totalInterest - targetSched.totalInterest)
 
     return {
       status:      'needed',
       targetY,
       targetMonths,
       reqPayment:  r2(reqPayment),
-      extraNeeded: Math.ceil(extraNeeded),
+      extraNeeded,
+      interestSaved,
     }
   }, [mortgage, stdSched])
 
@@ -423,6 +433,12 @@ export default function MortgagePage() {
                   <span className="text-green-400 font-semibold mono">{usd(extraNeeded, 0)}/mo</span>
                   {' '}on top of your standard payment.
                 </p>
+                {calc.interestSaved > 0 && (
+                  <p className="text-xs mt-1">
+                    <span className="text-emerald-400 font-semibold mono">{usd(calc.interestSaved)}</span>
+                    <span className="text-muted"> in interest saved vs. standard payoff</span>
+                  </p>
+                )}
               </div>
               <button
                 onClick={apply}
