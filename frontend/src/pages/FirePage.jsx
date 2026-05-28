@@ -670,26 +670,26 @@ export default function FirePage() {
                 <AreaChart data={netWorthTrend} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                   <defs>
                     <linearGradient id="savingsGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="var(--color-accent)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
+                      <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="divGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%"  stopColor="#34d399" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="year" tick={{ fontSize: 9, fill: 'var(--color-muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 9, fill: 'var(--color-muted)' }} tickLine={false} axisLine={false}
+                  <XAxis dataKey="year" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false}
                     tickFormatter={v => v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v}`} width={48} />
                   <Tooltip
-                    contentStyle={{ background: 'var(--color-panel)', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 11 }}
+                    contentStyle={{ background: '#161b27', border: '1px solid #1e2535', borderRadius: 8, fontSize: 11 }}
                     formatter={(v, name) => [`$${v.toLocaleString()}`, name === 'savings' ? 'Liquid Savings' : 'Div. Income/yr']}
                     labelFormatter={l => `Year ${l}`}
                   />
                   {projectedFireYear && (
-                    <ReferenceLine x={projectedFireYear} stroke="var(--color-accent)" strokeDasharray="4 2" label={{ value: 'FIRE', fontSize: 9, fill: 'var(--color-accent)', position: 'top' }} />
+                    <ReferenceLine x={projectedFireYear} stroke="#3b82f6" strokeDasharray="4 2" label={{ value: 'FIRE', fontSize: 9, fill: '#3b82f6', position: 'top' }} />
                   )}
-                  <Area type="monotone" dataKey="savings"   stroke="var(--color-accent)" strokeWidth={1.5} fill="url(#savingsGrad)" dot={false} />
+                  <Area type="monotone" dataKey="savings"   stroke="#3b82f6" strokeWidth={1.5} fill="url(#savingsGrad)" dot={false} />
                   <Area type="monotone" dataKey="divIncome" stroke="#34d399"              strokeWidth={1.5} fill="url(#divGrad)"    dot={false} />
                 </AreaChart>
               </ResponsiveContainer>

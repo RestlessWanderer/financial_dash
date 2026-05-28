@@ -402,14 +402,14 @@ export default function DashboardPage() {
                     <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--color-muted)' }} tickLine={false} axisLine={false}
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false}
                   tickFormatter={d => { const [,m,day] = d.split('-'); return `${m}/${day}` }}
                   interval="preserveStartEnd" />
-                <YAxis tick={{ fontSize: 9, fill: 'var(--color-muted)' }} tickLine={false} axisLine={false}
+                <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false}
                   tickFormatter={v => v >= 1_000_000 ? `$${(v/1_000_000).toFixed(1)}M` : v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v}`}
                   width={52} />
                 <Tooltip
-                  contentStyle={{ background: 'var(--color-panel)', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 11 }}
+                  contentStyle={{ background: '#161b27', border: '1px solid #1e2535', borderRadius: 8, fontSize: 11 }}
                   formatter={v => [`$${v.toLocaleString()}`, 'Net Worth']}
                   labelFormatter={d => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 />

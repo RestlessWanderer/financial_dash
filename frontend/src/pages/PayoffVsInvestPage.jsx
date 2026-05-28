@@ -112,21 +112,28 @@ function calcRequiredExtra(mortgageConfig, mortgageBalance, targetYearStr) {
   const [startY, startM] = mortgageConfig.startDate.split('-').map(Number)
   const startMonth0 = startM - 1
 
-  const monthlyRate   = annualRate / 100 / 12
-  const totalMonths   = termYears * 12
-  const stdPayment    = monthlyRate === 0
+  const monthlyRate = annualRate / 100 / 12
+  const totalMonths = termYears * 12
+  const stdPayment  = monthlyRate === 0
     ? principal / totalMonths
     : principal * monthlyRate * Math.pow(1 + monthlyRate, totalMonths) /
       (Math.pow(1 + monthlyRate, totalMonths) - 1)
 
-  const targetMonths  = (targetY - startY) * 12 + (12 - startMonth0)
-  if (targetMonths <= 0 || targetMonths >= totalMonths) return null
+  // Total months from mortgage start to end of target year
+  const totalToTarget = (targetY - startY) * 12 + (12 - startMonth0)
+  if (totalToTarget <= 0 || totalToTarget >= totalMonths) return null
 
-  // Payment required to pay off current balance in the remaining targetMonths
+  // Remaining months from TODAY to end of target year
+  const now         = new Date()
+  const elapsed     = (now.getFullYear() - startY) * 12 + (now.getMonth() - startMonth0)
+  const remainingMonths = totalToTarget - elapsed
+  if (remainingMonths <= 0) return null
+
+  // Payment required to pay off the CURRENT balance in the remaining months
   const reqPayment = monthlyRate === 0
-    ? mortgageBalance / targetMonths
-    : mortgageBalance * monthlyRate * Math.pow(1 + monthlyRate, targetMonths) /
-      (Math.pow(1 + monthlyRate, targetMonths) - 1)
+    ? mortgageBalance / remainingMonths
+    : mortgageBalance * monthlyRate * Math.pow(1 + monthlyRate, remainingMonths) /
+      (Math.pow(1 + monthlyRate, remainingMonths) - 1)
 
   const extra = Math.ceil(Math.max(0, reqPayment - stdPayment))
   return { targetY, requiredExtra: extra, reqPayment: Math.round(reqPayment * 100) / 100 }
