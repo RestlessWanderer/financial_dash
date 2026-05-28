@@ -311,6 +311,7 @@ export default function PayoffVsInvestPage() {
   const [mortgageConfig, setMortgageConfig] = useState(null)
   const [mortgageExtras, setMortgageExtras] = useState(null)
   const [expanded,       setExpanded]       = useState(new Set())
+  const [visibleGroups,  setVisibleGroups]  = useState(new Set(['standard', 'target1', 'target2']))
   const [budgetData,     setBudgetData]     = useState({})  // from Budget page
   const [budgetDefaults, setBudgetDefaults] = useState({})  // from Budget page defaults row
   const [budgetLabels,   setBudgetLabels]   = useState([])  // custom label names
@@ -402,6 +403,14 @@ export default function PayoffVsInvestPage() {
     setExpanded(prev => {
       const next = new Set(prev)
       next.has(year) ? next.delete(year) : next.add(year)
+      return next
+    })
+  }, [])
+
+  const toggleGroup = useCallback((key) => {
+    setVisibleGroups(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
       return next
     })
   }, [])
@@ -849,41 +858,111 @@ export default function PayoffVsInvestPage() {
           <div className="card p-0 overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-border text-[11px] text-muted uppercase tracking-wide bg-white/[0.02]">
-                  <th className="w-8 px-3 py-3" />
-                  <th className="px-3 py-3 text-left">Year</th>
-                  <th className="px-3 py-3 text-right">Budget</th>
-                  <th className="px-3 py-3 text-right">
-                    <span className="text-yellow-400/80">Mortgage</span>
-                    <span className="text-muted/60 normal-case ml-1">({Math.round(mortgageFrac * 100)}%)</span>
+                {/* ── Group header row ── */}
+                <tr className="border-b border-border/30 text-[10px] bg-white/[0.02]">
+                  <th className="w-8" colSpan={3} />
+                  {/* Standard Split group toggle */}
+                  <th colSpan={2} className="px-2 py-1.5 border-l border-border/40">
+                    <button
+                      onClick={() => toggleGroup('standard')}
+                      className={`flex items-center gap-1.5 mx-auto px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors border ${
+                        visibleGroups.has('standard')
+                          ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/20'
+                          : 'bg-white/[0.03] border-border/40 text-muted hover:text-slate-300 hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      {visibleGroups.has('standard') ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                      Standard Split
+                    </button>
                   </th>
-                  <th className="px-3 py-3 text-right">
-                    <span className="text-green-400/80">Invest</span>
-                    <span className="text-muted/60 normal-case ml-1">({Math.round(investFrac * 100)}%)</span>
-                  </th>
+                  {/* Target #1 group toggle */}
                   {target1 && (
+                    <th colSpan={2} className="px-2 py-1.5 border-l border-border/40">
+                      <button
+                        onClick={() => toggleGroup('target1')}
+                        className={`flex items-center gap-1.5 mx-auto px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors border ${
+                          visibleGroups.has('target1')
+                            ? 'bg-accent/10 border-accent/30 text-accent hover:bg-accent/20'
+                            : 'bg-white/[0.03] border-border/40 text-muted hover:text-slate-300 hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        {visibleGroups.has('target1') ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                        Target → {target1.targetY}
+                      </button>
+                    </th>
+                  )}
+                  {/* Target #2 group toggle */}
+                  {target2 && (
+                    <th colSpan={2} className="px-2 py-1.5 border-l border-border/40">
+                      <button
+                        onClick={() => toggleGroup('target2')}
+                        className={`flex items-center gap-1.5 mx-auto px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors border ${
+                          visibleGroups.has('target2')
+                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
+                            : 'bg-white/[0.03] border-border/40 text-muted hover:text-slate-300 hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        {visibleGroups.has('target2') ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                        Target → {target2.targetY}
+                      </button>
+                    </th>
+                  )}
+                  <th className="border-l border-border/40" />
+                </tr>
+                {/* ── Column label row ── */}
+                <tr className="border-b border-border text-[11px] text-muted uppercase tracking-wide bg-white/[0.02]">
+                  <th className="w-8 px-3 py-2" />
+                  <th className="px-3 py-2 text-left">Year</th>
+                  <th className="px-3 py-2 text-right">Budget</th>
+                  {visibleGroups.has('standard') ? (
                     <>
-                      <th className="px-3 py-3 text-right border-l border-border/40">
-                        <span className="text-accent/80">Mtg #1</span>
-                        <span className="text-muted/60 normal-case ml-1">(→{target1.targetY})</span>
+                      <th className="px-3 py-2 text-right border-l border-border/40">
+                        <span className="text-yellow-400/80">Mortgage</span>
+                        <span className="text-muted/60 normal-case ml-1">({Math.round(mortgageFrac * 100)}%)</span>
                       </th>
-                      <th className="px-3 py-3 text-right">
-                        <span className="text-accent/60">Inv #1</span>
+                      <th className="px-3 py-2 text-right">
+                        <span className="text-green-400/80">Invest</span>
+                        <span className="text-muted/60 normal-case ml-1">({Math.round(investFrac * 100)}%)</span>
                       </th>
                     </>
+                  ) : (
+                    <th colSpan={2} className="px-3 py-2 text-center border-l border-border/40">
+                      <span className="text-muted/40 normal-case text-[10px] font-normal italic">Standard split hidden</span>
+                    </th>
+                  )}
+                  {target1 && (
+                    visibleGroups.has('target1') ? (
+                      <>
+                        <th className="px-3 py-2 text-right border-l border-border/40">
+                          <span className="text-accent/80">Mortgage</span>
+                        </th>
+                        <th className="px-3 py-2 text-right">
+                          <span className="text-accent/60">Invest</span>
+                        </th>
+                      </>
+                    ) : (
+                      <th colSpan={2} className="px-3 py-2 text-center border-l border-border/40">
+                        <span className="text-muted/40 normal-case text-[10px] font-normal italic">hidden</span>
+                      </th>
+                    )
                   )}
                   {target2 && (
-                    <>
-                      <th className="px-3 py-3 text-right border-l border-border/40">
-                        <span className="text-amber-400/80">Mtg #2</span>
-                        <span className="text-muted/60 normal-case ml-1">(→{target2.targetY})</span>
+                    visibleGroups.has('target2') ? (
+                      <>
+                        <th className="px-3 py-2 text-right border-l border-border/40">
+                          <span className="text-amber-400/80">Mortgage</span>
+                        </th>
+                        <th className="px-3 py-2 text-right">
+                          <span className="text-amber-400/60">Invest</span>
+                        </th>
+                      </>
+                    ) : (
+                      <th colSpan={2} className="px-3 py-2 text-center border-l border-border/40">
+                        <span className="text-muted/40 normal-case text-[10px] font-normal italic">hidden</span>
                       </th>
-                      <th className="px-3 py-3 text-right">
-                        <span className="text-amber-400/60">Inv #2</span>
-                      </th>
-                    </>
+                    )
                   )}
-                  <th className="px-3 py-3 text-right border-l border-border/40 normal-case font-normal">Override</th>
+                  <th className="px-3 py-2 text-right border-l border-border/40 normal-case font-normal">Override</th>
                 </tr>
               </thead>
               <tbody>
@@ -907,19 +986,27 @@ export default function PayoffVsInvestPage() {
                         {yg.year}
                       </td>
                       <td className="px-3 py-3 text-right mono text-slate-400">{yg.budget > 0 ? usd(yg.budget) : <span className="text-muted/40">—</span>}</td>
-                      <td className="px-3 py-3 text-right mono text-yellow-400">{yg.budget > 0 ? usd(yg.stdMortgage) : <span className="text-muted/40">—</span>}</td>
-                      <td className="px-3 py-3 text-right mono text-green-400">{yg.budget > 0 ? usd(yg.stdInvest) : <span className="text-muted/40">—</span>}</td>
-                      {target1 && (
+                      {visibleGroups.has('standard') ? (
                         <>
-                          <td className="px-3 py-3 text-right mono text-accent border-l border-border/40">{yg.budget > 0 ? usd(yg.m1) : <span className="text-muted/40">—</span>}</td>
-                          <td className="px-3 py-3 text-right mono text-accent/70">{yg.budget > 0 ? usd(yg.i1) : <span className="text-muted/40">—</span>}</td>
+                          <td className="px-3 py-3 text-right mono text-yellow-400 border-l border-border/40">{yg.budget > 0 ? usd(yg.stdMortgage) : <span className="text-muted/40">—</span>}</td>
+                          <td className="px-3 py-3 text-right mono text-green-400">{yg.budget > 0 ? usd(yg.stdInvest) : <span className="text-muted/40">—</span>}</td>
                         </>
+                      ) : <td colSpan={2} className="border-l border-border/40" />}
+                      {target1 && (
+                        visibleGroups.has('target1') ? (
+                          <>
+                            <td className="px-3 py-3 text-right mono text-accent border-l border-border/40">{yg.budget > 0 ? usd(yg.m1) : <span className="text-muted/40">—</span>}</td>
+                            <td className="px-3 py-3 text-right mono text-accent/70">{yg.budget > 0 ? usd(yg.i1) : <span className="text-muted/40">—</span>}</td>
+                          </>
+                        ) : <td colSpan={2} className="border-l border-border/40" />
                       )}
                       {target2 && (
-                        <>
-                          <td className="px-3 py-3 text-right mono text-amber-400 border-l border-border/40">{yg.budget > 0 ? usd(yg.m2) : <span className="text-muted/40">—</span>}</td>
-                          <td className="px-3 py-3 text-right mono text-amber-400/70">{yg.budget > 0 ? usd(yg.i2) : <span className="text-muted/40">—</span>}</td>
-                        </>
+                        visibleGroups.has('target2') ? (
+                          <>
+                            <td className="px-3 py-3 text-right mono text-amber-400 border-l border-border/40">{yg.budget > 0 ? usd(yg.m2) : <span className="text-muted/40">—</span>}</td>
+                            <td className="px-3 py-3 text-right mono text-amber-400/70">{yg.budget > 0 ? usd(yg.i2) : <span className="text-muted/40">—</span>}</td>
+                          </>
+                        ) : <td colSpan={2} className="border-l border-border/40" />
                       )}
                       <td className="px-3 py-3 border-l border-border/40" />
                     </tr>
@@ -952,45 +1039,53 @@ export default function PayoffVsInvestPage() {
                                       {r.hasOverride && <span className="ml-1 text-[9px] text-accent uppercase">custom</span>}
                                     </td>
                                     {/* Standard split */}
-                                    <td className="px-3 py-2 text-right mono text-yellow-400/80">
-                                      {r.budget > 0 ? usd(r.stdMortgage) : <span className="text-muted/40">—</span>}
-                                    </td>
-                                    <td className="px-3 py-2 text-right mono text-green-400/80">
-                                      {r.budget > 0 ? usd(r.stdInvest) : <span className="text-muted/40">—</span>}
-                                    </td>
-                                    {/* Target #1 */}
-                                    {target1 && (
+                                    {visibleGroups.has('standard') ? (
                                       <>
-                                        <td className="px-3 py-2 text-right border-l border-border/40">
-                                          <div className="flex flex-col items-end gap-0.5">
-                                            <span className={`mono ${r.carry1Out > 0 ? 'text-red-400' : 'text-accent/80'}`}>
-                                              {r.budget > 0 ? usd(r.m1 ?? 0) : <span className="text-muted/40">—</span>}
-                                            </span>
-                                            {r.carry1In > 0 && <span className="text-[9px] text-red-400/70">+{usd(r.carry1In)} carried in</span>}
-                                            {r.carry1Out > 0 && <span className="text-[9px] text-red-400/70">{usd(r.carry1Out)} short</span>}
-                                          </div>
+                                        <td className="px-3 py-2 text-right mono text-yellow-400/80 border-l border-border/40">
+                                          {r.budget > 0 ? usd(r.stdMortgage) : <span className="text-muted/40">—</span>}
                                         </td>
-                                        <td className="px-3 py-2 text-right mono text-accent/60">
-                                          {r.budget > 0 ? usd(r.i1 ?? 0) : <span className="text-muted/40">—</span>}
+                                        <td className="px-3 py-2 text-right mono text-green-400/80">
+                                          {r.budget > 0 ? usd(r.stdInvest) : <span className="text-muted/40">—</span>}
                                         </td>
                                       </>
+                                    ) : <td colSpan={2} className="border-l border-border/40" />}
+                                    {/* Target #1 */}
+                                    {target1 && (
+                                      visibleGroups.has('target1') ? (
+                                        <>
+                                          <td className="px-3 py-2 text-right border-l border-border/40">
+                                            <div className="flex flex-col items-end gap-0.5">
+                                              <span className={`mono ${r.carry1Out > 0 ? 'text-red-400' : 'text-accent/80'}`}>
+                                                {r.budget > 0 ? usd(r.m1 ?? 0) : <span className="text-muted/40">—</span>}
+                                              </span>
+                                              {r.carry1In > 0 && <span className="text-[9px] text-red-400/70">+{usd(r.carry1In)} carried in</span>}
+                                              {r.carry1Out > 0 && <span className="text-[9px] text-red-400/70">{usd(r.carry1Out)} short</span>}
+                                            </div>
+                                          </td>
+                                          <td className="px-3 py-2 text-right mono text-accent/60">
+                                            {r.budget > 0 ? usd(r.i1 ?? 0) : <span className="text-muted/40">—</span>}
+                                          </td>
+                                        </>
+                                      ) : <td colSpan={2} className="border-l border-border/40" />
                                     )}
                                     {/* Target #2 */}
                                     {target2 && (
-                                      <>
-                                        <td className="px-3 py-2 text-right border-l border-border/40">
-                                          <div className="flex flex-col items-end gap-0.5">
-                                            <span className={`mono ${r.carry2Out > 0 ? 'text-red-400' : 'text-amber-400/80'}`}>
-                                              {r.budget > 0 ? usd(r.m2 ?? 0) : <span className="text-muted/40">—</span>}
-                                            </span>
-                                            {r.carry2In > 0 && <span className="text-[9px] text-red-400/70">+{usd(r.carry2In)} carried in</span>}
-                                            {r.carry2Out > 0 && <span className="text-[9px] text-red-400/70">{usd(r.carry2Out)} short</span>}
-                                          </div>
-                                        </td>
-                                        <td className="px-3 py-2 text-right mono text-amber-400/60">
-                                          {r.budget > 0 ? usd(r.i2 ?? 0) : <span className="text-muted/40">—</span>}
-                                        </td>
-                                      </>
+                                      visibleGroups.has('target2') ? (
+                                        <>
+                                          <td className="px-3 py-2 text-right border-l border-border/40">
+                                            <div className="flex flex-col items-end gap-0.5">
+                                              <span className={`mono ${r.carry2Out > 0 ? 'text-red-400' : 'text-amber-400/80'}`}>
+                                                {r.budget > 0 ? usd(r.m2 ?? 0) : <span className="text-muted/40">—</span>}
+                                              </span>
+                                              {r.carry2In > 0 && <span className="text-[9px] text-red-400/70">+{usd(r.carry2In)} carried in</span>}
+                                              {r.carry2Out > 0 && <span className="text-[9px] text-red-400/70">{usd(r.carry2Out)} short</span>}
+                                            </div>
+                                          </td>
+                                          <td className="px-3 py-2 text-right mono text-amber-400/60">
+                                            {r.budget > 0 ? usd(r.i2 ?? 0) : <span className="text-muted/40">—</span>}
+                                          </td>
+                                        </>
+                                      ) : <td colSpan={2} className="border-l border-border/40" />
                                     )}
                                     {/* Override input */}
                                     <td className="px-3 py-2 text-right border-l border-border/40">
@@ -1025,19 +1120,27 @@ export default function PayoffVsInvestPage() {
                     <td className="px-3 py-3" />
                     <td className="px-3 py-3 text-slate-400 font-semibold text-xs whitespace-nowrap">Total</td>
                     <td className="px-3 py-3 text-right mono font-bold text-slate-300">{usd(grandTotals.budget)}</td>
-                    <td className="px-3 py-3 text-right mono font-bold text-yellow-400">{usd(grandTotals.stdMortgage)}</td>
-                    <td className="px-3 py-3 text-right mono font-bold text-green-400">{usd(grandTotals.stdInvest)}</td>
-                    {target1 && (
+                    {visibleGroups.has('standard') ? (
                       <>
-                        <td className="px-3 py-3 text-right mono font-bold text-accent border-l border-border/40">{usd(grandTotals.m1)}</td>
-                        <td className="px-3 py-3 text-right mono font-bold text-accent/70">{usd(grandTotals.i1)}</td>
+                        <td className="px-3 py-3 text-right mono font-bold text-yellow-400 border-l border-border/40">{usd(grandTotals.stdMortgage)}</td>
+                        <td className="px-3 py-3 text-right mono font-bold text-green-400">{usd(grandTotals.stdInvest)}</td>
                       </>
+                    ) : <td colSpan={2} className="border-l border-border/40" />}
+                    {target1 && (
+                      visibleGroups.has('target1') ? (
+                        <>
+                          <td className="px-3 py-3 text-right mono font-bold text-accent border-l border-border/40">{usd(grandTotals.m1)}</td>
+                          <td className="px-3 py-3 text-right mono font-bold text-accent/70">{usd(grandTotals.i1)}</td>
+                        </>
+                      ) : <td colSpan={2} className="border-l border-border/40" />
                     )}
                     {target2 && (
-                      <>
-                        <td className="px-3 py-3 text-right mono font-bold text-amber-400 border-l border-border/40">{usd(grandTotals.m2)}</td>
-                        <td className="px-3 py-3 text-right mono font-bold text-amber-400/70">{usd(grandTotals.i2)}</td>
-                      </>
+                      visibleGroups.has('target2') ? (
+                        <>
+                          <td className="px-3 py-3 text-right mono font-bold text-amber-400 border-l border-border/40">{usd(grandTotals.m2)}</td>
+                          <td className="px-3 py-3 text-right mono font-bold text-amber-400/70">{usd(grandTotals.i2)}</td>
+                        </>
+                      ) : <td colSpan={2} className="border-l border-border/40" />
                     )}
                     <td className="border-l border-border/40" />
                   </tr>
@@ -1045,29 +1148,35 @@ export default function PayoffVsInvestPage() {
                   {hasTargets && (
                     <tr>
                       <td className="px-3 pb-2" />
-                      <td className="px-3 pb-2 text-[10px] text-muted" colSpan={3}>invest delta vs. standard split →</td>
-                      <td />
+                      <td className="px-3 pb-2 text-[10px] text-muted" colSpan={2}>invest delta vs. standard split →</td>
+                      {visibleGroups.has('standard') ? (
+                        <td colSpan={2} className="border-l border-border/40" />
+                      ) : <td colSpan={2} className="border-l border-border/40" />}
                       {target1 && (
-                        <>
-                          <td className="px-3 pb-2 text-right border-l border-border/40" />
-                          <td className="px-3 pb-2 text-right">
-                            {(() => {
-                              const d = grandTotals.i1 - grandTotals.stdInvest
-                              return <span className={`mono text-xs font-semibold ${d >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d >= 0 ? '+' : '−'}{usd(Math.abs(d))}</span>
-                            })()}
-                          </td>
-                        </>
+                        visibleGroups.has('target1') ? (
+                          <>
+                            <td className="px-3 pb-2 text-right border-l border-border/40" />
+                            <td className="px-3 pb-2 text-right">
+                              {(() => {
+                                const d = grandTotals.i1 - grandTotals.stdInvest
+                                return <span className={`mono text-xs font-semibold ${d >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d >= 0 ? '+' : '−'}{usd(Math.abs(d))}</span>
+                              })()}
+                            </td>
+                          </>
+                        ) : <td colSpan={2} className="border-l border-border/40" />
                       )}
                       {target2 && (
-                        <>
-                          <td className="px-3 pb-2 text-right border-l border-border/40" />
-                          <td className="px-3 pb-2 text-right">
-                            {(() => {
-                              const d = grandTotals.i2 - grandTotals.stdInvest
-                              return <span className={`mono text-xs font-semibold ${d >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d >= 0 ? '+' : '−'}{usd(Math.abs(d))}</span>
-                            })()}
-                          </td>
-                        </>
+                        visibleGroups.has('target2') ? (
+                          <>
+                            <td className="px-3 pb-2 text-right border-l border-border/40" />
+                            <td className="px-3 pb-2 text-right">
+                              {(() => {
+                                const d = grandTotals.i2 - grandTotals.stdInvest
+                                return <span className={`mono text-xs font-semibold ${d >= 0 ? 'text-green-400' : 'text-red-400'}`}>{d >= 0 ? '+' : '−'}{usd(Math.abs(d))}</span>
+                              })()}
+                            </td>
+                          </>
+                        ) : <td colSpan={2} className="border-l border-border/40" />
                       )}
                       <td className="border-l border-border/40" />
                     </tr>
