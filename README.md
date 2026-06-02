@@ -61,7 +61,7 @@ financial_dash/
 │           ├── AssetsPage.jsx          # Physical assets with value + debt tracking
 │           ├── LiquidAssetsPage.jsx    # Liquid accounts + inflation analysis
 │           ├── MortgagePage.jsx        # Amortization + extra payments + target payoff years
-│           ├── LoansPage.jsx           # Loan tracker with total interest calculations
+│           ├── LoansPage.jsx           # Loan tracker with live balance + payoff progress
 │           ├── BudgetPage.jsx          # Monthly income/expense budget + NE savings impact
 │           ├── PayoffVsInvestPage.jsx  # Mortgage payoff vs. invest split calculator
 │           ├── DividendPage.jsx        # Dividend income portfolio tracker + milestone cards
@@ -154,7 +154,7 @@ Click the **Profile** button above the theme toggle in the sidebar to set:
 The main overview page. Shows:
 - **Net Worth hero card** — full breakdown of every asset and liability with mini grid cards, plus a **daily net worth history chart** that builds over time as you visit
 - **Dividend Income banner** — projected annual income, progress bar, and milestone chips toward your goal
-- **Section cards** — quick links to Retirement, Work Stock, Brokerage, Physical Assets, Liquid Assets, Mortgage, and Loans with key metrics at a glance
+- **Section cards** — quick links to Retirement, Work Stock, Brokerage, Physical Assets, Liquid Assets, Mortgage, and Loans with key metrics at a glance. The Loans card shows your **current outstanding balance** (not original principal) as the live liability figure.
 
 ---
 
@@ -211,17 +211,24 @@ The main overview page. Shows:
 
 ### Loans (`/loans`)
 
-- Track any non-mortgage loans with name, interest type (fixed amortizing or simple), amount, term, and rate
+- Track any non-mortgage loans with name, interest type (fixed amortizing or simple), original amount, term, rate, start date, and monthly payment
+- **Live current balance** — automatically amortized month-by-month from the loan start date to today; advances each calendar month without any manual input. Falls back to original amount if no start date is entered.
+- **Payoff progress bar** — shows percentage paid off and estimated payoff month
+- **Months remaining** — derived from start date + term
+- Monthly payment field is optional; if omitted the standard calculated payment is shown with a `(calc.)` label
 - Calculates total interest paid over the life of each loan
-- Header totals: Total Principal, Total Interest, Total Cost
-- Loan interest is included as a liability drag in the Dashboard net worth calculation
+- Header totals show **Current Balance** (live), Total Interest, Total Cost
+- Current balance + remaining interest are used as the liability in the Dashboard net worth calculation
 
 ### Mortgage (`/mortgage`)
 
 - Enter loan start date, term, interest rate, and principal
 - Displays monthly payment, standard payoff date, and total interest
 - **Amortization chart** — standard payoff (grey) vs. accelerated payoff (green)
-- **Two Target Payoff Year fields** — calculates the flat extra payment needed to hit each target and total interest savings; one-click to apply
+- **Two Target Payoff Year fields** — each banner shows:
+  - The flat extra monthly payment required to hit that year
+  - **Total interest saved** vs. the standard payoff schedule
+  - One-click **Apply to schedule** button
 - All data persists in `localStorage`
 
 ### Budget (`/budget`)
@@ -237,15 +244,20 @@ The main overview page. Shows:
 - Models the optimal split of a monthly budget between extra mortgage principal and investing
 - Input: filing status, state, gross income, expected investment return
 - **Monthly budget auto-loaded from the Budget page**
-- **Monthly Planner table** — year-grouped with carry-forward deficit logic
+- **Collapsible column groups** — the monthly planner table has three toggleable column groups: Standard Split, Target → Year 1, Target → Year 2. Click a group header pill to show/hide those columns, keeping the table focused on what matters.
+- **Monthly Planner table** — year-grouped with carry-forward deficit logic. Target columns show the exact extra principal needed to stay on pace for each target payoff year, with the remainder allocated to investing.
 
 ### Dividends (`/dividends`)
 
-- Screens ~120 dividend-paying stocks and ETFs (yields ≥ 5%) from Yahoo Finance
+- Screens ~120 dividend-paying stocks and ETFs (yields ≥ 5%) from Yahoo Finance — covered call ETFs (QYLD, XYLD, RYLD, JEPI, JEPQ) are intentionally excluded due to NAV erosion; add them manually via "Add a ticker" if desired
 - **Goal** set from your Profile (default $100K/yr) — milestone step cards at goal/4 intervals
 - **Income Goal Progress** bar, **Portfolio info card**, **Milestone step cards** (with mini progress bars), **Add a ticker**, **Portfolio breakdown** table
+- **Target / yr** column — plan-based income target per position (dimmed)
+- **Actual / yr** column — live income calculated from your shares owned × annual dividend per share; updates instantly as you type
+- **Beta** column — price volatility vs. market: green < 0.5, yellow 0.5–1.0, red > 1.0
+- **Payout %** column — dividend sustainability: green ≤ 80%, yellow 80–100%, red > 100% (normal for REITs/BDCs; caution for regular stocks)
 - Add custom tickers; enter shares owned to update projected income instantly
-- Holdings persist to the database
+- Holdings persist to the database; user-added tickers are preserved across screener refreshes
 - Warns if you try to add a ticker already in the screened portfolio
 
 ### FIRE Journey (`/fire`)
@@ -253,7 +265,7 @@ The main overview page. Shows:
 Your step-by-step path to **Financial Independence, Early Retirement**:
 
 1. **Eliminate Non-Essential Spending** — lists NE-flagged budget categories and monthly cost
-2. **Pay Off All Loans** — shows each loan with principal and total interest cost
+2. **Pay Off All Loans** — shows each loan with its **current balance** and remaining interest cost
 3. **Pay Off Your Mortgage** — remaining balance progress bar
 4. **Fund Bridge Capital** — calculates the lump-sum needed to cover expenses between your desired retirement age and penalty-free retirement account access (age 59.5):
    - **Path A (Passive):** dividend income coverage of essential expenses
@@ -261,7 +273,7 @@ Your step-by-step path to **Financial Independence, Early Retirement**:
 
 **Projected FIRE Date card** — projects forward year by year based on your current savings rate and dividend growth (5%/yr), finds the first year you're FIRE-ready, and charts the trajectory.
 
-Each step auto-detects completion from your data, with manual override available. Progress is persisted to `localStorage`.
+Each step auto-detects completion from your data (loans cleared when current balance hits zero), with manual override available. Progress is persisted to `localStorage`.
 
 ---
 
@@ -269,7 +281,7 @@ Each step auto-detects completion from your data, with manual override available
 
 The app automatically detects and notifies you (in-app toast + optional browser notification) the first time you cross each of these milestones:
 
-- Loans fully cleared
+- Loans fully cleared (triggers when total current balance reaches $0)
 - Loan nearly paid off (< 10% interest remaining)
 - Mortgage 25% / 50% / 75% / 100% paid
 - Net worth $10K / $25K / $50K / $100K / $250K / $500K / $1M
@@ -320,10 +332,11 @@ Fill in the `SMTP_*` variables in `.env`. The backend sends a plain-text email o
 |---|---|---|
 | Tickers, alert rules, alert history | `backend/data/stocks.db` (Docker named volume) | ✅ Yes |
 | Dividend holdings (shares owned) | Same SQLite database | ✅ Yes |
+| Dividend snapshots (price, yield, beta, payout) | Same SQLite database | ✅ Yes |
 | Retirement, work stock, brokerage, physical assets, liquid accounts | Same SQLite database | ✅ Yes |
 | Retirement dividend holdings (per-account) | Browser `localStorage` | ✅ Yes (browser only) |
 | Mortgage details, extra payments, target payoff years | Browser `localStorage` | ✅ Yes (browser only) |
-| Loans | Browser `localStorage` | ✅ Yes (browser only) |
+| Loans (including start date + monthly payment) | Browser `localStorage` | ✅ Yes (browser only) |
 | Budget income/expense data + custom categories + NE flags | Browser `localStorage` | ✅ Yes (browser only) |
 | User profile (age, retirement age, dividend goal, withdrawal rate) | Browser `localStorage` | ✅ Yes (browser only) |
 | Net worth history snapshots | Browser `localStorage` | ✅ Yes (browser only) |
