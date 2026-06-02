@@ -505,7 +505,8 @@ export default function DividendPage() {
                   <th className="px-3 py-3 text-right">Invest</th>
                   <th className="px-3 py-3 text-right">Shares Goal</th>
                   <th className="px-3 py-3 text-right">Shares Owned</th>
-                  <th className="px-3 py-3 text-right text-emerald-400/70">Target Income / yr</th>
+                  <th className="px-3 py-3 text-right text-emerald-400/40">Target / yr</th>
+                  <th className="px-3 py-3 text-right text-emerald-400">Actual / yr</th>
                   <th className="px-3 py-3 w-8" />
                 </tr>
               </thead>
@@ -515,15 +516,15 @@ export default function DividendPage() {
                 {userAdded.length > 0 && (
                   <>
                     <tr className="bg-accent/[0.03]">
-                      <td colSpan={11} className="px-3 py-1.5 text-[10px] text-accent/70 uppercase tracking-widest font-medium border-b border-accent/10">
+                      <td colSpan={12} className="px-3 py-1.5 text-[10px] text-accent/70 uppercase tracking-widest font-medium border-b border-accent/10">
                         Custom Tickers
                       </td>
                     </tr>
                     {userAdded
                       .sort((a, b) => b.dividend_yield - a.dividend_yield)
                       .map((s, i) => {
-                        const owned = getOwned(s.symbol)
-                        const projIncome = owned * s.annual_dividend
+                        const owned      = getOwned(s.symbol)
+                        const actualIncome = owned * (s.annual_dividend ?? 0)
                         return (
                           <tr key={s.symbol}
                             className="border-b border-border/40 hover:bg-white/[0.025] transition-colors bg-accent/[0.02]">
@@ -553,8 +554,13 @@ export default function DividendPage() {
                                 className="w-20 bg-surface border border-border rounded-md px-2 py-1 text-xs mono text-right focus:outline-none focus:border-accent transition-colors"
                               />
                             </td>
-                            <td className="px-3 py-2.5 text-right mono text-emerald-400/70">
-                              {owned > 0 ? usd(projIncome) : '—'}
+                            {/* No plan-based target for custom tickers */}
+                            <td className="px-3 py-2.5 text-right mono text-muted/40">—</td>
+                            <td className="px-3 py-2.5 text-right mono">
+                              {actualIncome > 0
+                                ? <span className="text-emerald-400 font-semibold">{usd(actualIncome)}</span>
+                                : <span className="text-muted/40">—</span>
+                              }
                             </td>
                             <td className="px-3 py-2.5 text-center">
                               <button
@@ -576,16 +582,17 @@ export default function DividendPage() {
                   <>
                     {userAdded.length > 0 && (
                       <tr className="bg-white/[0.01]">
-                        <td colSpan={11} className="px-3 py-1.5 text-[10px] text-muted uppercase tracking-widest font-medium border-b border-border/30">
+                        <td colSpan={12} className="px-3 py-1.5 text-[10px] text-muted uppercase tracking-widest font-medium border-b border-border/30">
                           Screened Portfolio — Top {qualified.length} by Yield ≥ 5%
                         </td>
                       </tr>
                     )}
                     {plan.rows.map((s, i) => {
-                      const owned         = getOwned(s.symbol)
-                      const sharesGoal    = Math.max(0, s.targetShares - owned)
-                      const goalMet       = owned >= s.targetShares
-                      const remainInvest  = sharesGoal * (s.price ?? 0)
+                      const owned        = getOwned(s.symbol)
+                      const sharesGoal   = Math.max(0, s.targetShares - owned)
+                      const goalMet      = owned >= s.targetShares
+                      const remainInvest = sharesGoal * (s.price ?? 0)
+                      const actualIncome = owned * (s.annual_dividend ?? 0)
                       return (
                         <tr key={s.symbol}
                           className="border-b border-border/40 hover:bg-white/[0.025] transition-colors">
@@ -620,8 +627,14 @@ export default function DividendPage() {
                               className="w-20 bg-surface border border-border rounded-md px-2 py-1 text-xs mono text-right focus:outline-none focus:border-accent transition-colors"
                             />
                           </td>
-                          <td className="px-3 py-2.5 text-right mono text-emerald-400/70">
+                          <td className="px-3 py-2.5 text-right mono text-emerald-400/40">
                             {usd(s.targetIncome)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right mono">
+                            {actualIncome > 0
+                              ? <span className="text-emerald-400 font-semibold">{usd(actualIncome)}</span>
+                              : <span className="text-muted/40">—</span>
+                            }
                           </td>
                           <td className="px-3 py-2.5" />
                         </tr>
@@ -630,6 +643,24 @@ export default function DividendPage() {
                   </>
                 )}
               </tbody>
+
+              {/* ── Totals footer ───────────────────────────────── */}
+              {totalProjectedIncome > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-border/60 bg-white/[0.02]">
+                    <td colSpan={9} className="px-3 py-3 text-xs text-slate-400 font-semibold">
+                      Total
+                    </td>
+                    <td className="px-3 py-3 text-right mono font-bold text-emerald-400/50">
+                      {usd(plan.totalIncome)}
+                    </td>
+                    <td className="px-3 py-3 text-right mono font-bold text-emerald-400">
+                      {usd(totalProjectedIncome)}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
 
