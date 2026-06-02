@@ -91,6 +91,7 @@ class DividendSnapshot(SQLModel, table=True):
     annual_dividend:  float          = Field(default=0.0)
     dividend_yield:   float          = Field(default=0.0)  # decimal, e.g. 0.05 = 5 %
     payout_ratio:     Optional[float] = None
+    beta:             Optional[float] = None
     ex_dividend_date: Optional[str]  = None
     fetched_at:       datetime       = Field(default_factory=datetime.utcnow)
 

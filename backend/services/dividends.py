@@ -137,6 +137,7 @@ def fetch_one(symbol: str) -> Optional[dict]:
                 pass
 
         payout = info.get("payoutRatio")
+        beta   = info.get("beta")
 
         return {
             "symbol":           symbol,
@@ -146,6 +147,7 @@ def fetch_one(symbol: str) -> Optional[dict]:
             "annual_dividend":  round(div_rate, 4),
             "dividend_yield":   round(div_yield, 6),   # e.g. 0.0500 = 5.00 %
             "payout_ratio":     round(float(payout), 4) if payout else None,
+            "beta":             round(float(beta), 3)  if beta   else None,
             "ex_dividend_date": ex_date,
         }
     except Exception as e:

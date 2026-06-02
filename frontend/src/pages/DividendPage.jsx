@@ -38,6 +38,38 @@ function YieldPill({ value }) {
   return <span className={`text-xs px-2 py-0.5 rounded-full mono ${cls}`}>{pct}%</span>
 }
 
+/** Beta: <0.5 green (low vol), 0.5–1.0 yellow, >1.0 red (high vol), null = — */
+function BetaPill({ value }) {
+  if (value == null) return <span className="text-muted/40 text-xs">—</span>
+  const cls = value < 0.5
+    ? 'text-emerald-400'
+    : value < 1.0
+    ? 'text-yellow-400'
+    : 'text-rose-400'
+  return <span className={`mono text-xs font-semibold ${cls}`}>{value.toFixed(2)}</span>
+}
+
+/**
+ * Payout ratio: <0.8 green (sustainable), 0.8–1.0 yellow (stretched),
+ * >1.0 red (paying out more than earned — dividend cut risk).
+ * ETFs/REITs/BDCs often legitimately exceed 1.0 due to pass-through rules,
+ * so we show the value but don't alarm-red them without context.
+ */
+function PayoutPill({ value }) {
+  if (value == null) return <span className="text-muted/40 text-xs">—</span>
+  const pct = (value * 100).toFixed(0)
+  const cls = value <= 0.8
+    ? 'text-emerald-400'
+    : value <= 1.0
+    ? 'text-yellow-400'
+    : 'text-rose-400'
+  return (
+    <span className={`mono text-xs font-semibold ${cls}`} title={value > 1 ? 'Paying out more than earnings — common for REITs/BDCs, watch for stocks' : undefined}>
+      {pct}%
+    </span>
+  )
+}
+
 function timeAgo(iso) {
   if (!iso) return null
   const mins = Math.round((Date.now() - new Date(iso + 'Z').getTime()) / 60_000)
@@ -524,6 +556,8 @@ export default function DividendPage() {
                   <th className="px-3 py-3 text-right">Yield</th>
                   <th className="px-3 py-3 text-right">Div / Share</th>
                   <th className="px-3 py-3 text-right">Price</th>
+                  <th className="px-3 py-3 text-right">Beta</th>
+                  <th className="px-3 py-3 text-right">Payout</th>
                   <th className="px-3 py-3 text-right">Invest</th>
                   <th className="px-3 py-3 text-right">Shares Goal</th>
                   <th className="px-3 py-3 text-right">Shares Owned</th>
@@ -538,7 +572,7 @@ export default function DividendPage() {
                 {userAdded.length > 0 && (
                   <>
                     <tr className="bg-accent/[0.03]">
-                      <td colSpan={12} className="px-3 py-1.5 text-[10px] text-accent/70 uppercase tracking-widest font-medium border-b border-accent/10">
+                      <td colSpan={14} className="px-3 py-1.5 text-[10px] text-accent/70 uppercase tracking-widest font-medium border-b border-accent/10">
                         Custom Tickers
                       </td>
                     </tr>
@@ -565,6 +599,8 @@ export default function DividendPage() {
                             </td>
                             <td className="px-3 py-2.5 text-right mono text-slate-300">${(s.annual_dividend ?? 0).toFixed(2)}</td>
                             <td className="px-3 py-2.5 text-right mono">${(s.price ?? 0).toFixed(2)}</td>
+                            <td className="px-3 py-2.5 text-right"><BetaPill value={s.beta} /></td>
+                            <td className="px-3 py-2.5 text-right"><PayoutPill value={s.payout_ratio} /></td>
                             <td className="px-3 py-2.5 text-right mono text-muted">—</td>
                             <td className="px-3 py-2.5 text-right mono text-muted">—</td>
                             <td className="px-3 py-2.5 text-right">
@@ -604,7 +640,7 @@ export default function DividendPage() {
                   <>
                     {userAdded.length > 0 && (
                       <tr className="bg-white/[0.01]">
-                        <td colSpan={12} className="px-3 py-1.5 text-[10px] text-muted uppercase tracking-widest font-medium border-b border-border/30">
+                        <td colSpan={14} className="px-3 py-1.5 text-[10px] text-muted uppercase tracking-widest font-medium border-b border-border/30">
                           Screened Portfolio — Top {qualified.length} by Yield ≥ 5%
                         </td>
                       </tr>
@@ -628,6 +664,8 @@ export default function DividendPage() {
                           </td>
                           <td className="px-3 py-2.5 text-right mono text-slate-300">${(s.annual_dividend ?? 0).toFixed(2)}</td>
                           <td className="px-3 py-2.5 text-right mono">${(s.price ?? 0).toFixed(2)}</td>
+                          <td className="px-3 py-2.5 text-right"><BetaPill value={s.beta} /></td>
+                          <td className="px-3 py-2.5 text-right"><PayoutPill value={s.payout_ratio} /></td>
                           <td className="px-3 py-2.5 text-right mono">
                             {goalMet
                               ? <span className="text-emerald-400 text-xs font-medium">✓ done</span>
@@ -670,7 +708,7 @@ export default function DividendPage() {
               {totalProjectedIncome > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-border/60 bg-white/[0.02]">
-                    <td colSpan={9} className="px-3 py-3 text-xs text-slate-400 font-semibold">
+                    <td colSpan={11} className="px-3 py-3 text-xs text-slate-400 font-semibold">
                       Total
                     </td>
                     <td className="px-3 py-3 text-right mono font-bold text-emerald-400/50">
@@ -691,6 +729,15 @@ export default function DividendPage() {
             Equal-weight allocation across screened portfolio. Custom tickers are always tracked regardless of yield.
             Projected income updates live as you enter shares. Data via Yahoo Finance · not financial advice.
           </p>
+          <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-[10px] text-muted border-t border-border/30 pt-3">
+            <span className="font-medium text-slate-400 uppercase tracking-wider">Risk key:</span>
+            <span><span className="font-semibold text-emerald-400">Beta &lt; 0.5</span> — low volatility</span>
+            <span><span className="font-semibold text-yellow-400">Beta 0.5–1.0</span> — moderate</span>
+            <span><span className="font-semibold text-rose-400">Beta &gt; 1.0</span> — high volatility</span>
+            <span className="border-l border-border/40 pl-6"><span className="font-semibold text-emerald-400">Payout ≤ 80%</span> — sustainable</span>
+            <span><span className="font-semibold text-yellow-400">Payout 80–100%</span> — stretched</span>
+            <span><span className="font-semibold text-rose-400">Payout &gt; 100%</span> — exceeds earnings · normal for REITs/BDCs, caution for stocks</span>
+          </div>
         </>
       )}
     </div>
