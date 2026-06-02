@@ -273,6 +273,7 @@ export default function DividendPage() {
   const [ownedInputs, setOwnedInputs] = useState({})
   const [savedOwned,  setSavedOwned]  = useState({})
   const [TARGET,      setTARGET]      = useState(() => loadTarget())
+  const [riskFilter,  setRiskFilter]  = useState('normal')
   const debounceRef = useRef({})
 
   // Re-read target from profile whenever page gains focus (user may have updated profile)
@@ -377,8 +378,18 @@ export default function DividendPage() {
   const screened   = allStocks.filter(s => !s.user_added)
   const qualified  = screened.filter(s => s.dividend_yield >= MIN_YIELD)
 
+  // Risk filter: Normal = no extra filter; Medium = exclude payout > 100%; Low = exclude payout > 80%
+  // Tickers with null payout_ratio always pass through regardless of setting
+  const riskFiltered = qualified.filter(s => {
+    if (riskFilter === 'normal') return true
+    if (s.payout_ratio == null)  return true
+    if (riskFilter === 'medium') return s.payout_ratio <= 1.0
+    if (riskFilter === 'low')    return s.payout_ratio <= 0.8
+    return true
+  })
+
   const MILESTONES = buildMilestones(TARGET)
-  const plan = buildPlan(qualified, TARGET)
+  const plan = buildPlan(riskFiltered, TARGET)
   const lastUpdated = timeAgo(data?.last_updated)
 
   const totalActuallyInvested = allStocks.reduce(
@@ -395,25 +406,13 @@ export default function DividendPage() {
     <div className="space-y-5">
 
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Dividend Income Planner</h1>
-          <p className="text-xs text-muted mt-0.5">
-            Your path to{' '}
-            <strong className="text-emerald-400">{formatGoalLabel(TARGET)} / year</strong>{' '}
-            in passive dividend income
-          </p>
-        </div>
-        <div className="flex items-center gap-3 shrink-0">
-          {lastUpdated && <span className="text-xs text-muted">Updated {lastUpdated}</span>}
-          <button
-            onClick={refresh} disabled={refreshing}
-            className="flex items-center gap-1.5 bg-accent/10 text-accent border border-accent/20 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-accent/20 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-            {refreshing ? 'Fetching…' : qualified.length ? 'Refresh' : 'Load Data'}
-          </button>
-        </div>
+      <div>
+        <h1 className="text-xl font-semibold">Dividend Income Planner</h1>
+        <p className="text-xs text-muted mt-0.5">
+          Your path to{' '}
+          <strong className="text-emerald-400">{formatGoalLabel(TARGET)} / year</strong>{' '}
+          in passive dividend income
+        </p>
       </div>
 
       {error && (
@@ -434,13 +433,19 @@ export default function DividendPage() {
       {/* ── Empty state (no data yet) ────────────────────────────── */}
       {!loading && !refreshing && !hasContent && (
         <>
-          <div className="card text-center py-12 text-muted space-y-2">
+          <div className="card text-center py-12 text-muted space-y-3">
             <Landmark size={32} className="mx-auto opacity-30" />
             <p className="font-medium text-slate-300">No data yet</p>
             <p className="text-xs max-w-sm mx-auto">
-              Click <strong className="text-slate-200">Load Data</strong> to screen
-              dividend-paying stocks and ETFs, or add a ticker below.
+              Screen dividend-paying stocks and ETFs to build your portfolio plan.
             </p>
+            <button
+              onClick={refresh} disabled={refreshing}
+              className="inline-flex items-center gap-1.5 bg-accent/10 text-accent border border-accent/20 px-4 py-2 rounded-lg text-sm font-medium hover:bg-accent/20 transition-colors disabled:opacity-50 mx-auto"
+            >
+              <RefreshCw size={13} />
+              Load Data
+            </button>
           </div>
           <AddTickerCard onAdd={handleAddTicker} screenedSymbols={screened.map(s => s.symbol)} />
         </>
@@ -486,7 +491,7 @@ export default function DividendPage() {
           {/* 3. Milestone step cards */}
           <div className="grid grid-cols-4 gap-3">
             {MILESTONES.map((m) => {
-              const p     = buildPlan(qualified, m)
+              const p     = buildPlan(riskFiltered, m)
               const toGoM = Math.max(0, p.totalNeeded - totalActuallyInvested)
               const done  = toGoM === 0
               const pct   = Math.min(100, (totalActuallyInvested / p.totalNeeded) * 100)
@@ -537,14 +542,50 @@ export default function DividendPage() {
 
           {/* 5. Table */}
           <div className="card p-0 overflow-x-auto">
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-              <span className="text-sm font-medium">
-                Portfolio breakdown —{' '}
-                <span className="text-emerald-400">{formatGoalLabel(TARGET)} / yr</span>
-              </span>
-              <span className="text-xs text-muted">
-                {qualified.length} screened · {userAdded.length} custom · update <em>Shares Owned</em> as you buy
-              </span>
+            <div className="px-4 py-3 border-b border-border flex flex-wrap items-center gap-3 justify-between">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-sm font-medium">
+                  Portfolio breakdown —{' '}
+                  <span className="text-emerald-400">{formatGoalLabel(TARGET)} / yr</span>
+                </span>
+                <span className="text-xs text-muted">
+                  {riskFiltered.length} screened{riskFilter !== 'normal' && ` (filtered from ${qualified.length})`} · {userAdded.length} custom
+                </span>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                {/* Risk filter toggle */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-muted uppercase tracking-wider">Risk:</span>
+                  {['normal', 'medium', 'low'].map(level => (
+                    <button
+                      key={level}
+                      onClick={() => setRiskFilter(level)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors border ${
+                        riskFilter === level
+                          ? level === 'low'
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                            : level === 'medium'
+                            ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40'
+                            : 'bg-white/10 text-slate-200 border-white/20'
+                          : 'bg-transparent text-muted border-border/40 hover:border-border hover:text-slate-300'
+                      }`}
+                    >
+                      {level.charAt(0).toUpperCase() + level.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                {/* Refresh button */}
+                <div className="flex items-center gap-2">
+                  {lastUpdated && <span className="text-xs text-muted">Updated {lastUpdated}</span>}
+                  <button
+                    onClick={refresh} disabled={refreshing}
+                    className="flex items-center gap-1.5 bg-accent/10 text-accent border border-accent/20 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent/20 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+                    {refreshing ? 'Fetching…' : qualified.length ? 'Refresh' : 'Load Data'}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <table className="w-full text-sm">
@@ -636,12 +677,14 @@ export default function DividendPage() {
                 )}
 
                 {/* ── Screened plan rows ──────────────────────── */}
-                {qualified.length > 0 && (
+                {riskFiltered.length > 0 && (
                   <>
                     {userAdded.length > 0 && (
                       <tr className="bg-white/[0.01]">
                         <td colSpan={14} className="px-3 py-1.5 text-[10px] text-muted uppercase tracking-widest font-medium border-b border-border/30">
-                          Screened Portfolio — Top {qualified.length} by Yield ≥ 5%
+                          Screened Portfolio — {riskFiltered.length} tickers · Yield ≥ 5%
+                          {riskFilter === 'medium' && ' · Payout ≤ 100%'}
+                          {riskFilter === 'low'    && ' · Payout ≤ 80%'}
                         </td>
                       </tr>
                     )}
@@ -725,7 +768,7 @@ export default function DividendPage() {
           </div>
 
           <p className="text-xs text-muted">
-            {qualified.length} screened stocks/ETFs with yield ≥ 5% · {userAdded.length} custom tickers.
+            {riskFiltered.length} screened stocks/ETFs with yield ≥ 5%{riskFilter !== 'normal' ? ` (risk filter: ${riskFilter})` : ''} · {userAdded.length} custom tickers.
             Equal-weight allocation across screened portfolio. Custom tickers are always tracked regardless of yield.
             Projected income updates live as you enter shares. Data via Yahoo Finance · not financial advice.
           </p>
