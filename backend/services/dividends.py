@@ -64,20 +64,27 @@ DIVIDEND_UNIVERSE = [
     # Dividend & Income ETFs
     "SCHD",  # Schwab US Dividend Equity
     "VYM",   # Vanguard High Dividend Yield
+    "VIG",   # Vanguard Dividend Appreciation
     "DVY",   # iShares Select Dividend (~5 %)
     "HDV",   # iShares Core High Dividend
     "DGRO",  # iShares Dividend Growth
+    "SDY",   # SPDR S&P Dividend Aristocrats
     "SPHD",  # Invesco S&P 500 High Div / Low Vol
     "SPYD",  # SPDR S&P 500 High Dividend
-    "JEPI",  # JPMorgan Equity Premium Income (~7-9 %)
-    "JEPQ",  # JPMorgan Nasdaq Equity Premium Income
-    "DIVO",  # Amplify CWP Enhanced Dividend Income
-    "QYLD",  # Global X NASDAQ 100 Covered Call (~10 %+)
-    "XYLD",  # Global X S&P 500 Covered Call (~10 %+)
-    "RYLD",  # Global X Russell 2000 Covered Call
+    "FDVV",  # Fidelity High Dividend ETF
+    "DIVO",  # Amplify CWP Enhanced Dividend Income (selective covered-call overlay, stable NAV)
     "PFF",   # iShares Preferred Stock & Income
     "PGX",   # Invesco Preferred ETF
     "PFFD",  # Global X U.S. Preferred ETF
+
+    # NOTE — covered call ETFs intentionally excluded:
+    # QYLD, XYLD, RYLD (Global X series) generate high stated yields by
+    # systematically selling call options, but at the cost of NAV erosion —
+    # the fund price depreciates steadily over time, making total return
+    # negative for long-term holders despite the headline income.
+    # JEPI / JEPQ are borderline (options overlay is selective, not full),
+    # but excluded here for the same reason; add them manually via
+    # "Add a ticker" if you want to track them as custom positions.
 ]
 
 
