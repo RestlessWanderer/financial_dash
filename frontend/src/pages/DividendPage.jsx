@@ -271,9 +271,31 @@ export default function DividendPage() {
 
   const refresh = async () => {
     setRefreshing(true); setError('')
-    try   { setData(await api.refreshDividends()) }
-    catch (e) { setError(e.message || 'Refresh failed') }
-    finally   { setRefreshing(false) }
+    try {
+      await api.refreshDividends()
+      // Re-fetch both data and holdings after refresh so user-added tickers
+      // and their shares owned are always preserved in the UI.
+      const [divRes, holdRes] = await Promise.allSettled([
+        api.getDividends(),
+        api.getDividendHoldings(),
+      ])
+      if (divRes.status  === 'fulfilled') setData(divRes.value)
+      if (holdRes.status === 'fulfilled') {
+        const h = holdRes.value
+        setSavedOwned(h)
+        setOwnedInputs(
+          Object.fromEntries(
+            Object.entries(h)
+              .filter(([, v]) => v > 0)
+              .map(([k, v]) => [k, String(v)])
+          )
+        )
+      }
+    } catch (e) {
+      setError(e.message || 'Refresh failed')
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   const handleAddTicker = useCallback(async (symbol) => {
@@ -431,7 +453,7 @@ export default function DividendPage() {
 
           {/* 3. Milestone step cards */}
           <div className="grid grid-cols-4 gap-3">
-            {MILESTONES.map((m, i) => {
+            {MILESTONES.map((m) => {
               const p     = buildPlan(qualified, m)
               const toGoM = Math.max(0, p.totalNeeded - totalActuallyInvested)
               const done  = toGoM === 0

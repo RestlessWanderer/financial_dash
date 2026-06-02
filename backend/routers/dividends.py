@@ -96,11 +96,32 @@ def refresh_dividends(session: Session = Depends(get_session)):
     session.commit()
     print(f"[dividends] Refresh complete — {len(data)} rows stored")
 
-    top = data[:TOP_N]
+    # Re-use the same merge logic as GET /dividends/ so user-added tickers
+    # are always included in the response (not wiped from the UI on refresh).
+    top_rows = session.exec(
+        select(DividendSnapshot)
+        .order_by(DividendSnapshot.dividend_yield.desc())
+        .limit(TOP_N)
+    ).all()
+    top_symbols = {r.symbol for r in top_rows}
+
+    extra_rows = []
+    for sym in protected:
+        if sym not in top_symbols:
+            row = session.get(DividendSnapshot, sym)
+            if row:
+                extra_rows.append(row)
+
+    stocks = []
+    for r in list(top_rows) + extra_rows:
+        d = r.model_dump()
+        d["user_added"] = r.symbol in protected
+        stocks.append(d)
+
     return {
-        "stocks":       top,
+        "stocks":       stocks,
         "last_updated": now.isoformat(),
-        "count":        len(top),
+        "count":        len(stocks),
     }
 
 
