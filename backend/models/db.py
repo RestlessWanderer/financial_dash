@@ -94,6 +94,19 @@ class DividendSnapshot(SQLModel, table=True):
     beta:             Optional[float] = None
     ex_dividend_date: Optional[str]  = None
     fetched_at:       datetime       = Field(default_factory=datetime.utcnow)
+    # Quality / moat metrics
+    return_on_equity:   Optional[float] = None   # ROE
+    return_on_assets:   Optional[float] = None   # ROA
+    gross_margins:      Optional[float] = None
+    operating_margins:  Optional[float] = None
+    profit_margins:     Optional[float] = None
+    revenue_growth:     Optional[float] = None
+    earnings_growth:    Optional[float] = None
+    debt_to_equity:     Optional[float] = None
+    free_cashflow:      Optional[float] = None
+    market_cap:         Optional[float] = None
+    moat_score:         Optional[float] = None   # 0–100 computed composite
+    moat_label:         Optional[str]  = None    # "Wide" | "Narrow" | "Weak"
 
 
 class LiquidAccount(SQLModel, table=True):

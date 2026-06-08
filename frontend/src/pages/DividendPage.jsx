@@ -3,7 +3,8 @@ import { api } from '../api'
 import { RefreshCw, Landmark, Plus, X, LoaderCircle } from 'lucide-react'
 
 const DEFAULT_TARGET  = 100_000
-const MIN_YIELD       = 0.05
+const MIN_YIELD_HIGH  = 0.05    // ≥ 5%  → high-yield tier
+const MIN_YIELD_MID   = 0.025   // 2.5–4.99% → mid-yield / quality tier
 
 function loadTarget() {
   try {
@@ -36,6 +37,24 @@ function YieldPill({ value }) {
     ? 'bg-green-500/20 text-green-300 border border-green-400/30 font-bold'
     : 'bg-green-500/10 text-green-400 border border-green-500/20'
   return <span className={`text-xs px-2 py-0.5 rounded-full mono ${cls}`}>{pct}%</span>
+}
+
+/** Moat: Wide (green) / Narrow (yellow) / Weak (red) / null = — */
+function MoatPill({ label, score }) {
+  if (!label) return <span className="text-muted/40 text-xs">—</span>
+  const cls = label === 'Wide'
+    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+    : label === 'Narrow'
+    ? 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
+    : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+  return (
+    <span
+      className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${cls}`}
+      title={score != null ? `Moat score: ${score}/100` : undefined}
+    >
+      {label}
+    </span>
+  )
 }
 
 /** Beta: <0.5 green (low vol), 0.5–1.0 yellow, >1.0 red (high vol), null = — */
@@ -373,20 +392,32 @@ export default function DividendPage() {
   }, [ownedInputs, savedOwned])
 
   // Separate user-added from screened stocks
-  const allStocks  = data?.stocks ?? []
-  const userAdded  = allStocks.filter(s => s.user_added)
-  const screened   = allStocks.filter(s => !s.user_added)
-  const qualified  = screened.filter(s => s.dividend_yield >= MIN_YIELD)
+  const allStocks = data?.stocks ?? []
+  const userAdded = allStocks.filter(s => s.user_added)
+  const screened  = allStocks.filter(s => !s.user_added)
 
-  // Risk filter: Normal = no extra filter; Medium = exclude payout > 100%; Low = exclude payout > 80%
+  // Split screened into two yield tiers
+  const highYield = screened.filter(s => s.dividend_yield >= MIN_YIELD_HIGH)
+  const midYield  = screened.filter(s => s.dividend_yield >= MIN_YIELD_MID && s.dividend_yield < MIN_YIELD_HIGH)
+
+  // Helper: apply risk filter to a tier
   // Tickers with null payout_ratio always pass through regardless of setting
-  const riskFiltered = qualified.filter(s => {
-    if (riskFilter === 'normal') return true
-    if (s.payout_ratio == null)  return true
-    if (riskFilter === 'medium') return s.payout_ratio <= 1.0
-    if (riskFilter === 'low')    return s.payout_ratio <= 0.8
-    return true
-  })
+  function applyRisk(tier) {
+    return tier.filter(s => {
+      if (riskFilter === 'normal') return true
+      if (s.payout_ratio == null)  return true
+      if (riskFilter === 'medium') return s.payout_ratio <= 1.0
+      if (riskFilter === 'low')    return s.payout_ratio <= 0.8
+      return true
+    })
+  }
+
+  const highFiltered = applyRisk(highYield)
+  const midFiltered  = applyRisk(midYield)
+  // Combined for plan math + milestone cards
+  const riskFiltered = [...highFiltered, ...midFiltered]
+  // Keep qualified alias for any remaining references
+  const qualified = riskFiltered
 
   const MILESTONES = buildMilestones(TARGET)
   const plan = buildPlan(riskFiltered, TARGET)
@@ -465,7 +496,8 @@ export default function DividendPage() {
                 <div className="flex flex-wrap gap-x-8 gap-y-3">
                   <Stat label="Total needed" value={usd(plan.totalNeeded)} />
                   <Stat label="Avg yield"    value={`${(plan.avgYield * 100).toFixed(2)}%`} />
-                  <Stat label="Positions"    value={qualified.length} />
+                  <Stat label="High yield ≥5%" value={highFiltered.length} />
+                  <Stat label="Mid yield 2.5–5%" value={midFiltered.length} />
                   <Stat label="Per stock"    value={usd(plan.perStock)} />
                 </div>
               </div>
@@ -549,7 +581,7 @@ export default function DividendPage() {
                   <span className="text-emerald-400">{formatGoalLabel(TARGET)} / yr</span>
                 </span>
                 <span className="text-xs text-muted">
-                  {riskFiltered.length} screened{riskFilter !== 'normal' && ` (filtered from ${qualified.length})`} · {userAdded.length} custom
+                  {highFiltered.length} high · {midFiltered.length} mid{riskFilter !== 'normal' ? ` (risk filtered)` : ''} · {userAdded.length} custom
                 </span>
               </div>
               <div className="flex items-center gap-3 shrink-0">
@@ -597,6 +629,7 @@ export default function DividendPage() {
                   <th className="px-3 py-3 text-right">Yield</th>
                   <th className="px-3 py-3 text-right">Div / Share</th>
                   <th className="px-3 py-3 text-right">Price</th>
+                  <th className="px-3 py-3 text-right">Moat</th>
                   <th className="px-3 py-3 text-right">Beta</th>
                   <th className="px-3 py-3 text-right">Payout</th>
                   <th className="px-3 py-3 text-right">Invest</th>
@@ -613,14 +646,14 @@ export default function DividendPage() {
                 {userAdded.length > 0 && (
                   <>
                     <tr className="bg-accent/[0.03]">
-                      <td colSpan={14} className="px-3 py-1.5 text-[10px] text-accent/70 uppercase tracking-widest font-medium border-b border-accent/10">
+                      <td colSpan={15} className="px-3 py-1.5 text-[10px] text-accent/70 uppercase tracking-widest font-medium border-b border-accent/10">
                         Custom Tickers
                       </td>
                     </tr>
                     {userAdded
                       .sort((a, b) => b.dividend_yield - a.dividend_yield)
                       .map((s, i) => {
-                        const owned      = getOwned(s.symbol)
+                        const owned        = getOwned(s.symbol)
                         const actualIncome = owned * (s.annual_dividend ?? 0)
                         return (
                           <tr key={s.symbol}
@@ -632,41 +665,31 @@ export default function DividendPage() {
                                 <span className="text-[9px] bg-accent/15 text-accent border border-accent/25 rounded px-1 py-0.5 uppercase tracking-wide leading-none">custom</span>
                               </div>
                             </td>
-                            <td className="px-3 py-2.5 text-xs text-slate-300 max-w-[150px]">
-                              <span className="truncate block">{s.name}</span>
-                            </td>
-                            <td className="px-3 py-2.5 text-right">
-                              <YieldPill value={s.dividend_yield} />
-                            </td>
+                            <td className="px-3 py-2.5 text-xs text-slate-300 max-w-[150px]"><span className="truncate block">{s.name}</span></td>
+                            <td className="px-3 py-2.5 text-right"><YieldPill value={s.dividend_yield} /></td>
                             <td className="px-3 py-2.5 text-right mono text-slate-300">${(s.annual_dividend ?? 0).toFixed(2)}</td>
                             <td className="px-3 py-2.5 text-right mono">${(s.price ?? 0).toFixed(2)}</td>
+                            <td className="px-3 py-2.5 text-right"><MoatPill label={s.moat_label} score={s.moat_score} /></td>
                             <td className="px-3 py-2.5 text-right"><BetaPill value={s.beta} /></td>
                             <td className="px-3 py-2.5 text-right"><PayoutPill value={s.payout_ratio} /></td>
                             <td className="px-3 py-2.5 text-right mono text-muted">—</td>
                             <td className="px-3 py-2.5 text-right mono text-muted">—</td>
                             <td className="px-3 py-2.5 text-right">
-                              <input
-                                type="number" min="0" step="1"
-                                value={ownedInputs[s.symbol] ?? ''}
-                                placeholder="0"
+                              <input type="number" min="0" step="1"
+                                value={ownedInputs[s.symbol] ?? ''} placeholder="0"
                                 onChange={e => handleOwned(s.symbol, e.target.value)}
                                 className="w-20 bg-surface border border-border rounded-md px-2 py-1 text-xs mono text-right focus:outline-none focus:border-accent transition-colors"
                               />
                             </td>
-                            {/* No plan-based target for custom tickers */}
                             <td className="px-3 py-2.5 text-right mono text-muted/40">—</td>
                             <td className="px-3 py-2.5 text-right mono">
                               {actualIncome > 0
                                 ? <span className="text-emerald-400 font-semibold">{usd(actualIncome)}</span>
-                                : <span className="text-muted/40">—</span>
-                              }
+                                : <span className="text-muted/40">—</span>}
                             </td>
                             <td className="px-3 py-2.5 text-center">
-                              <button
-                                onClick={() => handleRemoveTicker(s.symbol)}
-                                title={`Remove ${s.symbol}`}
-                                className="p-1 text-muted hover:text-red-400 transition-colors rounded"
-                              >
+                              <button onClick={() => handleRemoveTicker(s.symbol)} title={`Remove ${s.symbol}`}
+                                className="p-1 text-muted hover:text-red-400 transition-colors rounded">
                                 <X size={13} />
                               </button>
                             </td>
@@ -676,82 +699,47 @@ export default function DividendPage() {
                   </>
                 )}
 
-                {/* ── Screened plan rows ──────────────────────── */}
-                {riskFiltered.length > 0 && (
-                  <>
-                    {userAdded.length > 0 && (
-                      <tr className="bg-white/[0.01]">
-                        <td colSpan={14} className="px-3 py-1.5 text-[10px] text-muted uppercase tracking-widest font-medium border-b border-border/30">
-                          Screened Portfolio — {riskFiltered.length} tickers · Yield ≥ 5%
+                {/* ── High-yield tier (≥ 5%) ──────────────────── */}
+                {highFiltered.length > 0 && (() => {
+                  const highRows = plan.rows.filter(r => r.dividend_yield >= MIN_YIELD_HIGH)
+                  return (
+                    <>
+                      <tr className="bg-emerald-500/[0.04]">
+                        <td colSpan={15} className="px-3 py-1.5 text-[10px] text-emerald-400/80 uppercase tracking-widest font-medium border-b border-emerald-500/20">
+                          High Yield — ≥ 5% · {highFiltered.length} tickers
                           {riskFilter === 'medium' && ' · Payout ≤ 100%'}
                           {riskFilter === 'low'    && ' · Payout ≤ 80%'}
                         </td>
                       </tr>
-                    )}
-                    {plan.rows.map((s, i) => {
-                      const owned        = getOwned(s.symbol)
-                      const sharesGoal   = Math.max(0, s.targetShares - owned)
-                      const goalMet      = owned >= s.targetShares
-                      const remainInvest = sharesGoal * (s.price ?? 0)
-                      const actualIncome = owned * (s.annual_dividend ?? 0)
-                      return (
-                        <tr key={s.symbol}
-                          className="border-b border-border/40 hover:bg-white/[0.025] transition-colors">
-                          <td className="px-3 py-2.5 text-xs text-muted">{i + 1}</td>
-                          <td className="px-3 py-2.5 mono font-semibold text-accent">{s.symbol}</td>
-                          <td className="px-3 py-2.5 text-xs text-slate-300 max-w-[150px]">
-                            <span className="truncate block">{s.name}</span>
-                          </td>
-                          <td className="px-3 py-2.5 text-right">
-                            <YieldPill value={s.dividend_yield} />
-                          </td>
-                          <td className="px-3 py-2.5 text-right mono text-slate-300">${(s.annual_dividend ?? 0).toFixed(2)}</td>
-                          <td className="px-3 py-2.5 text-right mono">${(s.price ?? 0).toFixed(2)}</td>
-                          <td className="px-3 py-2.5 text-right"><BetaPill value={s.beta} /></td>
-                          <td className="px-3 py-2.5 text-right"><PayoutPill value={s.payout_ratio} /></td>
-                          <td className="px-3 py-2.5 text-right mono">
-                            {goalMet
-                              ? <span className="text-emerald-400 text-xs font-medium">✓ done</span>
-                              : usd(remainInvest)
-                            }
-                          </td>
-                          <td className="px-3 py-2.5 text-right mono">
-                            {goalMet
-                              ? <span className="text-emerald-400 text-xs font-medium">✓ {s.targetShares.toLocaleString()}</span>
-                              : <span>{sharesGoal.toLocaleString()}</span>
-                            }
-                          </td>
-                          <td className="px-3 py-2.5 text-right">
-                            <input
-                              type="number" min="0" step="1"
-                              value={ownedInputs[s.symbol] ?? ''}
-                              placeholder="0"
-                              onChange={e => handleOwned(s.symbol, e.target.value)}
-                              className="w-20 bg-surface border border-border rounded-md px-2 py-1 text-xs mono text-right focus:outline-none focus:border-accent transition-colors"
-                            />
-                          </td>
-                          <td className="px-3 py-2.5 text-right mono text-emerald-400/40">
-                            {usd(s.targetIncome)}
-                          </td>
-                          <td className="px-3 py-2.5 text-right mono">
-                            {actualIncome > 0
-                              ? <span className="text-emerald-400 font-semibold">{usd(actualIncome)}</span>
-                              : <span className="text-muted/40">—</span>
-                            }
-                          </td>
-                          <td className="px-3 py-2.5" />
-                        </tr>
-                      )
-                    })}
-                  </>
-                )}
+                      {highRows.map((s, i) => <PlanRow key={s.symbol} s={s} i={i} getOwned={getOwned} ownedInputs={ownedInputs} handleOwned={handleOwned} />)}
+                    </>
+                  )
+                })()}
+
+                {/* ── Mid-yield tier (2.5–4.99%) ──────────────── */}
+                {midFiltered.length > 0 && (() => {
+                  const midRows = plan.rows.filter(r => r.dividend_yield < MIN_YIELD_HIGH)
+                  return (
+                    <>
+                      <tr className="bg-blue-500/[0.04]">
+                        <td colSpan={15} className="px-3 py-1.5 text-[10px] text-blue-400/80 uppercase tracking-widest font-medium border-b border-blue-500/20">
+                          Mid Yield — 2.5–4.9% · Quality Dividend Growers · {midFiltered.length} tickers
+                          {riskFilter === 'medium' && ' · Payout ≤ 100%'}
+                          {riskFilter === 'low'    && ' · Payout ≤ 80%'}
+                        </td>
+                      </tr>
+                      {midRows.map((s, i) => <PlanRow key={s.symbol} s={s} i={i} getOwned={getOwned} ownedInputs={ownedInputs} handleOwned={handleOwned} />)}
+                    </>
+                  )
+                })()}
+
               </tbody>
 
               {/* ── Totals footer ───────────────────────────────── */}
               {totalProjectedIncome > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-border/60 bg-white/[0.02]">
-                    <td colSpan={11} className="px-3 py-3 text-xs text-slate-400 font-semibold">
+                    <td colSpan={12} className="px-3 py-3 text-xs text-slate-400 font-semibold">
                       Total
                     </td>
                     <td className="px-3 py-3 text-right mono font-bold text-emerald-400/50">
@@ -768,22 +756,70 @@ export default function DividendPage() {
           </div>
 
           <p className="text-xs text-muted">
-            {riskFiltered.length} screened stocks/ETFs with yield ≥ 5%{riskFilter !== 'normal' ? ` (risk filter: ${riskFilter})` : ''} · {userAdded.length} custom tickers.
-            Equal-weight allocation across screened portfolio. Custom tickers are always tracked regardless of yield.
-            Projected income updates live as you enter shares. Data via Yahoo Finance · not financial advice.
+            {highFiltered.length} high-yield (≥5%) · {midFiltered.length} mid-yield (2.5–4.9%){riskFilter !== 'normal' ? ` · risk filter: ${riskFilter}` : ''} · {userAdded.length} custom tickers.
+            Equal-weight allocation across both tiers. Custom tickers always tracked regardless of yield.
+            Projected income updates live as you enter shares. Moat score computed from ROE, margins, ROA, and D/E. Data via Yahoo Finance · not financial advice.
           </p>
           <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-[10px] text-muted border-t border-border/30 pt-3">
-            <span className="font-medium text-slate-400 uppercase tracking-wider">Risk key:</span>
-            <span><span className="font-semibold text-emerald-400">Beta &lt; 0.5</span> — low volatility</span>
+            <span className="font-medium text-slate-400 uppercase tracking-wider">Key:</span>
+            <span><span className="font-semibold text-emerald-400">Moat Wide</span> — strong competitive advantage (score ≥ 65)</span>
+            <span><span className="font-semibold text-yellow-400">Moat Narrow</span> — some advantage (35–64)</span>
+            <span><span className="font-semibold text-rose-400">Moat Weak</span> — limited defensibility (&lt; 35)</span>
+            <span className="border-l border-border/40 pl-6"><span className="font-semibold text-emerald-400">Beta &lt; 0.5</span> — low vol</span>
             <span><span className="font-semibold text-yellow-400">Beta 0.5–1.0</span> — moderate</span>
-            <span><span className="font-semibold text-rose-400">Beta &gt; 1.0</span> — high volatility</span>
+            <span><span className="font-semibold text-rose-400">Beta &gt; 1.0</span> — high vol</span>
             <span className="border-l border-border/40 pl-6"><span className="font-semibold text-emerald-400">Payout ≤ 80%</span> — sustainable</span>
             <span><span className="font-semibold text-yellow-400">Payout 80–100%</span> — stretched</span>
-            <span><span className="font-semibold text-rose-400">Payout &gt; 100%</span> — exceeds earnings · normal for REITs/BDCs, caution for stocks</span>
+            <span><span className="font-semibold text-rose-400">Payout &gt; 100%</span> — exceeds earnings · normal for REITs/BDCs</span>
           </div>
         </>
       )}
     </div>
+  )
+}
+
+function PlanRow({ s, i, getOwned, ownedInputs, handleOwned }) {
+  const owned        = getOwned(s.symbol)
+  const sharesGoal   = Math.max(0, s.targetShares - owned)
+  const goalMet      = owned >= s.targetShares
+  const remainInvest = sharesGoal * (s.price ?? 0)
+  const actualIncome = owned * (s.annual_dividend ?? 0)
+  return (
+    <tr className="border-b border-border/40 hover:bg-white/[0.025] transition-colors">
+      <td className="px-3 py-2.5 text-xs text-muted">{i + 1}</td>
+      <td className="px-3 py-2.5 mono font-semibold text-accent">{s.symbol}</td>
+      <td className="px-3 py-2.5 text-xs text-slate-300 max-w-[150px]"><span className="truncate block">{s.name}</span></td>
+      <td className="px-3 py-2.5 text-right"><YieldPill value={s.dividend_yield} /></td>
+      <td className="px-3 py-2.5 text-right mono text-slate-300">${(s.annual_dividend ?? 0).toFixed(2)}</td>
+      <td className="px-3 py-2.5 text-right mono">${(s.price ?? 0).toFixed(2)}</td>
+      <td className="px-3 py-2.5 text-right"><MoatPill label={s.moat_label} score={s.moat_score} /></td>
+      <td className="px-3 py-2.5 text-right"><BetaPill value={s.beta} /></td>
+      <td className="px-3 py-2.5 text-right"><PayoutPill value={s.payout_ratio} /></td>
+      <td className="px-3 py-2.5 text-right mono">
+        {goalMet
+          ? <span className="text-emerald-400 text-xs font-medium">✓ done</span>
+          : usd(remainInvest)}
+      </td>
+      <td className="px-3 py-2.5 text-right mono">
+        {goalMet
+          ? <span className="text-emerald-400 text-xs font-medium">✓ {s.targetShares.toLocaleString()}</span>
+          : <span>{sharesGoal.toLocaleString()}</span>}
+      </td>
+      <td className="px-3 py-2.5 text-right">
+        <input type="number" min="0" step="1"
+          value={ownedInputs[s.symbol] ?? ''} placeholder="0"
+          onChange={e => handleOwned(s.symbol, e.target.value)}
+          className="w-20 bg-surface border border-border rounded-md px-2 py-1 text-xs mono text-right focus:outline-none focus:border-accent transition-colors"
+        />
+      </td>
+      <td className="px-3 py-2.5 text-right mono text-emerald-400/40">{usd(s.targetIncome)}</td>
+      <td className="px-3 py-2.5 text-right mono">
+        {actualIncome > 0
+          ? <span className="text-emerald-400 font-semibold">{usd(actualIncome)}</span>
+          : <span className="text-muted/40">—</span>}
+      </td>
+      <td className="px-3 py-2.5" />
+    </tr>
   )
 }
 

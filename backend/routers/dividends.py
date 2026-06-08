@@ -17,43 +17,40 @@ class AddTickerRequest(SQLModel):
 
 router = APIRouter(prefix="/dividends", tags=["dividends"])
 
-TOP_N = 25
-
 
 @router.get("/")
 def get_top_dividends(session: Session = Depends(get_session)):
-    """Return the cached top-N screened stocks plus any user-added tickers."""
+    """Return all cached screened stocks (both yield tiers) plus any user-added tickers."""
     # Which symbols has the user manually added?
     user_holdings = session.exec(
         select(DividendHolding).where(DividendHolding.user_added == True)
     ).all()
     user_symbols = {h.symbol for h in user_holdings}
 
-    # Top-N screened snapshots sorted by yield
-    top_rows = session.exec(
+    # All screened snapshots sorted by yield descending (no cap — frontend splits tiers)
+    screened_rows = session.exec(
         select(DividendSnapshot)
         .order_by(DividendSnapshot.dividend_yield.desc())
-        .limit(TOP_N)
     ).all()
-    top_symbols = {r.symbol for r in top_rows}
+    screened_symbols = {r.symbol for r in screened_rows}
 
-    # User-added tickers not already in the top-N (e.g. low-yield custom tickers)
+    # User-added tickers not already in the screened set
     extra_rows = []
     for sym in user_symbols:
-        if sym not in top_symbols:
+        if sym not in screened_symbols:
             row = session.get(DividendSnapshot, sym)
             if row:
                 extra_rows.append(row)
 
     stocks = []
-    for r in list(top_rows) + extra_rows:
+    for r in list(screened_rows) + extra_rows:
         d = r.model_dump()
         d["user_added"] = r.symbol in user_symbols
         stocks.append(d)
 
     return {
         "stocks":       stocks,
-        "last_updated": top_rows[0].fetched_at.isoformat() if top_rows else None,
+        "last_updated": screened_rows[0].fetched_at.isoformat() if screened_rows else None,
         "count":        len(stocks),
     }
 
@@ -96,24 +93,22 @@ def refresh_dividends(session: Session = Depends(get_session)):
     session.commit()
     print(f"[dividends] Refresh complete — {len(data)} rows stored")
 
-    # Re-use the same merge logic as GET /dividends/ so user-added tickers
-    # are always included in the response (not wiped from the UI on refresh).
-    top_rows = session.exec(
+    # Re-use the same merge logic as GET /dividends/
+    screened_rows = session.exec(
         select(DividendSnapshot)
         .order_by(DividendSnapshot.dividend_yield.desc())
-        .limit(TOP_N)
     ).all()
-    top_symbols = {r.symbol for r in top_rows}
+    screened_symbols = {r.symbol for r in screened_rows}
 
     extra_rows = []
     for sym in protected:
-        if sym not in top_symbols:
+        if sym not in screened_symbols:
             row = session.get(DividendSnapshot, sym)
             if row:
                 extra_rows.append(row)
 
     stocks = []
-    for r in list(top_rows) + extra_rows:
+    for r in list(screened_rows) + extra_rows:
         d = r.model_dump()
         d["user_added"] = r.symbol in protected
         stocks.append(d)

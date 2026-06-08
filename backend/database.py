@@ -19,6 +19,18 @@ def init_db():
         "ALTER TABLE liquidaccount ADD COLUMN apy REAL",
         "ALTER TABLE etradecredential ADD COLUMN sandbox INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE dividendsnapshot ADD COLUMN beta REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN return_on_equity REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN return_on_assets REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN gross_margins REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN operating_margins REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN profit_margins REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN revenue_growth REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN earnings_growth REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN debt_to_equity REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN free_cashflow REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN market_cap REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN moat_score REAL",
+        "ALTER TABLE dividendsnapshot ADD COLUMN moat_label TEXT",
     ]
     with engine.connect() as conn:
         for stmt in _migrations:
