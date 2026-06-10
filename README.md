@@ -249,16 +249,30 @@ The main overview page. Shows:
 
 ### Dividends (`/dividends`)
 
-- Screens ~120 dividend-paying stocks and ETFs (yields ≥ 5%) from Yahoo Finance — covered call ETFs (QYLD, XYLD, RYLD, JEPI, JEPQ) are intentionally excluded due to NAV erosion; add them manually via "Add a ticker" if desired
+- Screens ~160 dividend-paying stocks and ETFs from Yahoo Finance across **two yield tiers**:
+  - **High Yield (≥ 5%)** — income-focused positions: REITs, BDCs, MLPs, telecoms, tobacco, preferred ETFs
+  - **Mid Yield (2.5–4.9%)** — quality dividend growers with strong economic moats: KO, PEP, PG, JNJ, MSFT, V, MA, COST, MCO, SPGI, and more
+- Covered call ETFs (QYLD, XYLD, RYLD, JEPI, JEPQ) intentionally excluded due to NAV erosion; add them manually via "Add a ticker" if desired
 - **Goal** set from your Profile (default $100K/yr) — milestone step cards at goal/4 intervals
-- **Income Goal Progress** bar, **Portfolio info card**, **Milestone step cards** (with mini progress bars), **Add a ticker**, **Portfolio breakdown** table
-- **Target / yr** column — plan-based income target per position (dimmed)
-- **Actual / yr** column — live income calculated from your shares owned × annual dividend per share; updates instantly as you type
+- **Income Goal Progress** bar, **Portfolio info card** (shows high + mid tier counts), **Milestone step cards**, **Add a ticker**, **Portfolio breakdown** table
+- **Moat** column — computed economic moat score (0–100) derived from yfinance fundamentals:
+  - ROE (25 pts), Gross Margins (25 pts), Operating Margins (20 pts), ROA (15 pts), Debt/Equity inverse (15 pts)
+  - **Wide** (green, ≥ 65) — strong competitive advantage · **Narrow** (yellow, 35–64) · **Weak** (red, < 35)
+  - Hover the pill to see the raw score
 - **Beta** column — price volatility vs. market: green < 0.5, yellow 0.5–1.0, red > 1.0
 - **Payout %** column — dividend sustainability: green ≤ 80%, yellow 80–100%, red > 100% (normal for REITs/BDCs; caution for regular stocks)
+- **Target / yr** column — plan-based income target per position (dimmed)
+- **Actual / yr** column — live income calculated from your shares owned × annual dividend per share; updates instantly as you type
+- **Risk filter toggle** (Normal / Medium / Low) in the portfolio section header — applies to both tiers independently:
+  - **Normal** — no additional filtering beyond yield floor
+  - **Medium** — excludes tickers with payout ratio > 100%
+  - **Low** — excludes tickers with payout ratio > 80%
+  - Tickers with no payout data always pass through; custom tickers are never filtered
+- **Refresh** button lives in the portfolio section header alongside the risk filter (~20–30 s to re-screen the full universe)
 - Add custom tickers; enter shares owned to update projected income instantly
 - Holdings persist to the database; user-added tickers are preserved across screener refreshes
 - Warns if you try to add a ticker already in the screened portfolio
+- Goal math (plan allocations, milestone cards, portfolio info) spans both tiers combined
 
 ### FIRE Journey (`/fire`)
 
@@ -332,7 +346,7 @@ Fill in the `SMTP_*` variables in `.env`. The backend sends a plain-text email o
 |---|---|---|
 | Tickers, alert rules, alert history | `backend/data/stocks.db` (Docker named volume) | ✅ Yes |
 | Dividend holdings (shares owned) | Same SQLite database | ✅ Yes |
-| Dividend snapshots (price, yield, beta, payout) | Same SQLite database | ✅ Yes |
+| Dividend snapshots (price, yield, beta, payout, moat score, quality metrics) | Same SQLite database | ✅ Yes |
 | Retirement, work stock, brokerage, physical assets, liquid accounts | Same SQLite database | ✅ Yes |
 | Retirement dividend holdings (per-account) | Browser `localStorage` | ✅ Yes (browser only) |
 | Mortgage details, extra payments, target payoff years | Browser `localStorage` | ✅ Yes (browser only) |
