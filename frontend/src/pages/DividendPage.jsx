@@ -98,28 +98,73 @@ function timeAgo(iso) {
   return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`
 }
 
-function buildPlan(stocks, targetIncome) {
-  const n = stocks.length
-  if (n === 0) return { rows: [], totalNeeded: 0, totalIncome: 0, avgYield: 0, perStock: 0 }
-  const avgYield = stocks.reduce((s, t) => s + t.dividend_yield, 0) / n
-  const perStock = (targetIncome / avgYield) / n
-  const rows = stocks.map(s => {
-    const price    = s.price ?? 0
-    const annDiv   = s.annual_dividend ?? 0
-    const targetShares = price > 0 ? Math.ceil(perStock / price) : 0
+/**
+ * Build the dividend plan.
+ *
+ * Normal mode — income-equal allocation:
+ *   Each position targets (targetIncome / n) in annual income.
+ *   shares = ceil(incomePerPos / annualDividend)
+ *   This fixes the old equal-capital bug: high-yield tickers need fewer
+ *   shares, low-yield tickers need more — each contributes equally to income.
+ *
+ * Max Acceleration mode — yield-concentrated, minimum capital:
+ *   Tickers sorted highest-yield first. Income target divided equally
+ *   across only the top yielders. Remaining tickers show 0 target shares
+ *   but still appear in the table so you can track positions you own.
+ *   Result: minimum total capital to hit the goal.
+ */
+function buildPlan(stocks, targetIncome, maxAccel = false) {
+  if (stocks.length === 0) return { rows: [], totalNeeded: 0, totalIncome: 0, avgYield: 0, perStock: 0 }
+
+  const avgYield = stocks.reduce((s, t) => s + t.dividend_yield, 0) / stocks.length
+
+  // In max-accel mode concentrate into highest-yield positions only
+  // Use tickers until their combined yield capacity can cover the goal,
+  // capped at top 15 to keep the plan actionable.
+  let activeStocks, inactiveStocks
+  if (maxAccel) {
+    const byYield = [...stocks].sort((a, b) => b.dividend_yield - a.dividend_yield)
+    // Take the top 15 highest-yield tickers as the active set
+    const cap = Math.min(15, byYield.length)
+    activeStocks   = byYield.slice(0, cap)
+    inactiveStocks = byYield.slice(cap)
+  } else {
+    activeStocks   = stocks
+    inactiveStocks = []
+  }
+
+  const n = activeStocks.length
+  const incomePerPos = targetIncome / n
+
+  const activeRows = activeStocks.map(s => {
+    const price  = s.price ?? 0
+    const annDiv = s.annual_dividend ?? 0
+    const targetShares = annDiv > 0 ? Math.ceil(incomePerPos / annDiv) : 0
     return {
       ...s,
       targetShares,
       targetInvest: targetShares * price,
       targetIncome: targetShares * annDiv,
     }
-  }).sort((a, b) => b.targetIncome - a.targetIncome)
+  })
+
+  // Inactive tickers still appear in the table with 0 plan targets
+  const inactiveRows = inactiveStocks.map(s => ({
+    ...s,
+    targetShares: 0,
+    targetInvest: 0,
+    targetIncome: 0,
+  }))
+
+  const rows = [...activeRows, ...inactiveRows]
+    .sort((a, b) => b.targetIncome - a.targetIncome)
+
   return {
     rows,
-    totalNeeded: rows.reduce((s, r) => s + r.targetInvest, 0),
-    totalIncome: rows.reduce((s, r) => s + r.targetIncome, 0),
+    totalNeeded: activeRows.reduce((s, r) => s + r.targetInvest, 0),
+    totalIncome: activeRows.reduce((s, r) => s + r.targetIncome, 0),
     avgYield,
-    perStock,
+    perStock: incomePerPos,
   }
 }
 
@@ -293,6 +338,7 @@ export default function DividendPage() {
   const [savedOwned,  setSavedOwned]  = useState({})
   const [TARGET,      setTARGET]      = useState(() => loadTarget())
   const [riskFilter,  setRiskFilter]  = useState('normal')
+  const [maxAccel,    setMaxAccel]    = useState(false)
   const debounceRef = useRef({})
 
   // Re-read target from profile whenever page gains focus (user may have updated profile)
@@ -420,7 +466,9 @@ export default function DividendPage() {
   const qualified = riskFiltered
 
   const MILESTONES = buildMilestones(TARGET)
-  const plan = buildPlan(riskFiltered, TARGET)
+  // Max accel ignores risk filter and uses the full screened universe
+  const planStocks = maxAccel ? [...highYield, ...midYield] : riskFiltered
+  const plan = buildPlan(planStocks, TARGET, maxAccel)
   const lastUpdated = timeAgo(data?.last_updated)
 
   const totalActuallyInvested = allStocks.reduce(
@@ -496,10 +544,20 @@ export default function DividendPage() {
                 <div className="flex flex-wrap gap-x-8 gap-y-3">
                   <Stat label="Total needed" value={usd(plan.totalNeeded)} />
                   <Stat label="Avg yield"    value={`${(plan.avgYield * 100).toFixed(2)}%`} />
-                  <Stat label="High yield ≥5%" value={highFiltered.length} />
-                  <Stat label="Mid yield 2.5–5%" value={midFiltered.length} />
-                  <Stat label="Per stock"    value={usd(plan.perStock)} />
+                  {maxAccel
+                    ? <Stat label="Active positions" value={`Top 15 by yield`} valueClass="text-amber-400" />
+                    : <>
+                        <Stat label="High yield ≥5%"    value={highFiltered.length} />
+                        <Stat label="Mid yield 2.5–5%"  value={midFiltered.length} />
+                      </>
+                  }
+                  <Stat label="Income / position" value={usd(plan.perStock)} />
                 </div>
+                {maxAccel && (
+                  <p className="text-[11px] text-amber-400/80 mt-1">
+                    ⚡ Max Acceleration — concentrated into top 15 highest-yield positions, risk filters bypassed. Minimum capital to reach goal.
+                  </p>
+                )}
               </div>
               <div className="text-right shrink-0">
                 <p className="text-[10px] text-muted uppercase tracking-widest mb-1">Current Projected Income</p>
@@ -523,7 +581,7 @@ export default function DividendPage() {
           {/* 3. Milestone step cards */}
           <div className="grid grid-cols-4 gap-3">
             {MILESTONES.map((m) => {
-              const p     = buildPlan(riskFiltered, m)
+              const p     = buildPlan(planStocks, m, maxAccel)
               const toGoM = Math.max(0, p.totalNeeded - totalActuallyInvested)
               const done  = toGoM === 0
               const pct   = Math.min(100, (totalActuallyInvested / p.totalNeeded) * 100)
@@ -585,8 +643,8 @@ export default function DividendPage() {
                 </span>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                {/* Risk filter toggle */}
-                <div className="flex items-center gap-1.5">
+                {/* Risk filter toggle — disabled in max accel mode */}
+                <div className={`flex items-center gap-1.5 transition-opacity ${maxAccel ? 'opacity-30 pointer-events-none' : ''}`}>
                   <span className="text-[10px] text-muted uppercase tracking-wider">Risk:</span>
                   {['normal', 'medium', 'low'].map(level => (
                     <button
@@ -606,6 +664,19 @@ export default function DividendPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* Max Acceleration toggle */}
+                <button
+                  onClick={() => setMaxAccel(v => !v)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors border ${
+                    maxAccel
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                      : 'bg-transparent text-muted border-border/40 hover:border-border hover:text-slate-300'
+                  }`}
+                  title="Concentrates allocation into the top 15 highest-yield tickers to minimise capital needed to reach the goal. Ignores risk filter."
+                >
+                  {maxAccel ? '⚡' : '⚡'} Max Accel
+                </button>
                 {/* Refresh button */}
                 <div className="flex items-center gap-2">
                   {lastUpdated && <span className="text-xs text-muted">Updated {lastUpdated}</span>}
@@ -756,8 +827,12 @@ export default function DividendPage() {
           </div>
 
           <p className="text-xs text-muted">
-            {highFiltered.length} high-yield (≥5%) · {midFiltered.length} mid-yield (2.5–4.9%){riskFilter !== 'normal' ? ` · risk filter: ${riskFilter}` : ''} · {userAdded.length} custom tickers.
-            Equal-weight allocation across both tiers. Custom tickers always tracked regardless of yield.
+            {maxAccel
+              ? <>⚡ <strong className="text-amber-400">Max Acceleration</strong> — top 15 highest-yield positions, all risk filters bypassed. </>
+              : <>{highFiltered.length} high-yield (≥5%) · {midFiltered.length} mid-yield (2.5–4.9%){riskFilter !== 'normal' ? ` · risk filter: ${riskFilter}` : ''} · </>
+            }
+            {userAdded.length} custom tickers.
+            Equal-income allocation per position. Custom tickers always tracked regardless of yield.
             Projected income updates live as you enter shares. Moat score computed from ROE, margins, ROA, and D/E. Data via Yahoo Finance · not financial advice.
           </p>
           <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-[10px] text-muted border-t border-border/30 pt-3">
