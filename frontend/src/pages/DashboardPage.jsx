@@ -267,6 +267,7 @@ export default function DashboardPage() {
   // Mortgage + loans + retirement div holdings live in localStorage (client-side only)
   const [mortgageConfig,      setMortgageConfig]      = useState(null)
   const [mortgageExtras,      setMortgageExtras]      = useState(null)
+  const [mortgageProperties,  setMortgageProperties]  = useState([])  // multi-property v2
   const [loans,               setLoans]               = useState([])
   const [retirementDivMap,    setRetirementDivMap]    = useState({}) // accountId → {symbol: shares}
   const [retirementSnapshots, setRetirementSnapshots] = useState({}) // symbol → snapshot data
@@ -274,10 +275,20 @@ export default function DashboardPage() {
   useEffect(() => {
     // Read mortgage and loans from localStorage
     try {
-      const cfg = localStorage.getItem('mortgage_config')
-      const ext = localStorage.getItem('mortgage_extras')
-      if (cfg) setMortgageConfig(JSON.parse(cfg))
-      if (ext) setMortgageExtras(JSON.parse(ext))
+      // New multi-property format
+      const propsRaw = localStorage.getItem('mortgages_v2')
+      if (propsRaw) {
+        const props = JSON.parse(propsRaw)
+        setMortgageProperties(props)
+        // Also keep legacy single-mortgage state for PayoffVsInvest / FirePage compat
+        if (props.length > 0 && props[0].form) setMortgageConfig(props[0].form)
+      } else {
+        // Legacy fallback
+        const cfg = localStorage.getItem('mortgage_config')
+        const ext = localStorage.getItem('mortgage_extras')
+        if (cfg) setMortgageConfig(JSON.parse(cfg))
+        if (ext) setMortgageExtras(JSON.parse(ext))
+      }
     } catch { /* ignore */ }
     try {
       const l = localStorage.getItem('loans_data')
@@ -348,8 +359,29 @@ export default function DashboardPage() {
   const assetEquity     = assetValue - assetDebt
   const liquidTotal     = (liquid     ?? []).reduce((s, a) => s + (a.value ?? 0), 0)
 
-  const mortgageBalance = calcMortgageBalance(mortgageConfig, mortgageExtras)
-  const hasMortgage     = mortgageBalance !== null
+  // Sum mortgage balances and property values across all properties
+  const { mortgageBalance, mortgagePropertyValue, hasMortgage } = useMemo(() => {
+    if (mortgageProperties.length > 0) {
+      let totalBalance = 0, totalValue = 0, anyMortgage = false
+      for (const p of mortgageProperties) {
+        const extras = (() => {
+          try { return JSON.parse(localStorage.getItem(`mortgage_extras_${p.id}`) ?? 'null') ?? {} }
+          catch { return {} }
+        })()
+        const bal = calcMortgageBalance(p.form, extras)
+        if (bal !== null) { totalBalance += bal; anyMortgage = true }
+        totalValue += parseFloat(p.propertyValue) || 0
+      }
+      return {
+        mortgageBalance:       anyMortgage ? totalBalance : null,
+        mortgagePropertyValue: totalValue,
+        hasMortgage:           anyMortgage,
+      }
+    }
+    // Legacy single-mortgage fallback
+    const bal = calcMortgageBalance(mortgageConfig, mortgageExtras)
+    return { mortgageBalance: bal, mortgagePropertyValue: 0, hasMortgage: bal !== null }
+  }, [mortgageProperties, mortgageConfig, mortgageExtras])
 
   const projectedIncome = (divData && divHoldings)
     ? calcDividendIncome(divHoldings, divData.stocks ?? [])
@@ -375,8 +407,9 @@ export default function DashboardPage() {
   const hasLoans           = loans.length > 0
 
   // Net worth = all assets minus all liabilities
+  // Property value is an asset; mortgage balance is a liability
   // Loan liability = current balance + remaining interest (accurate live figure)
-  const netAssets      = retirementTotal + workStockTotal + brokerageTotal + assetValue + liquidTotal
+  const netAssets      = retirementTotal + workStockTotal + brokerageTotal + assetValue + liquidTotal + mortgagePropertyValue
   const netLiabilities = assetDebt + (hasMortgage ? mortgageBalance : 0) + loanCurrentTotal + loanInterestTotal
   const netWorth       = netAssets - netLiabilities
   const nwReady        = !loading
@@ -404,13 +437,33 @@ export default function DashboardPage() {
     ? Math.min(100, (projectedIncome / divTarget) * 100)
     : null
 
-  // Mortgage payoff label
-  let mortgageLabel = null
-  if (mortgageConfig?.startDate && mortgageConfig?.years) {
-    const [y, m] = mortgageConfig.startDate.split('-').map(Number)
-    const payoffDate = new Date(y, (m - 1) + parseInt(mortgageConfig.years) * 12)
-    mortgageLabel = payoffDate.toLocaleString('default', { month: 'long', year: 'numeric' })
-  }
+  // Mortgage section card rows — multi-property summary
+  const mortgageCardRows = useMemo(() => {
+    if (!hasMortgage) return []
+    if (mortgageProperties.length > 1) {
+      return [
+        [`${mortgageProperties.length} properties`, '', 'text-slate-400'],
+        mortgagePropertyValue > 0 ? ['Total property value', usd(mortgagePropertyValue), 'text-emerald-400/80'] : null,
+        ['Total remaining balance', usd(mortgageBalance), 'text-rose-400/80'],
+        mortgagePropertyValue > 0 ? ['Total equity', usd(mortgagePropertyValue - mortgageBalance), mortgagePropertyValue - mortgageBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'] : null,
+      ].filter(Boolean)
+    }
+    // Single property
+    const p = mortgageProperties[0] ?? null
+    const cfg = p?.form ?? mortgageConfig
+    let payoffLabel = null
+    if (cfg?.startDate && cfg?.years) {
+      const [y, m] = cfg.startDate.split('-').map(Number)
+      const payoffDate = new Date(y, (m - 1) + parseInt(cfg.years) * 12)
+      payoffLabel = payoffDate.toLocaleString('default', { month: 'long', year: 'numeric' })
+    }
+    const pVal = parseFloat(p?.propertyValue) || 0
+    return [
+      pVal > 0        ? ['Property value',   usd(pVal),              'text-emerald-400/80'] : null,
+      payoffLabel     ? ['Standard payoff',  payoffLabel,            'text-slate-300']      : null,
+      pVal > 0        ? ['Equity',           usd(pVal - mortgageBalance), pVal - mortgageBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'] : null,
+    ].filter(Boolean)
+  }, [hasMortgage, mortgageProperties, mortgagePropertyValue, mortgageBalance, mortgageConfig])
 
   return (
     <div className="space-y-6">
@@ -453,11 +506,14 @@ export default function DashboardPage() {
               <NWMiniCard label="Retirement"      value={retirementTotal} sign="+"  loading={loading} />
               <NWMiniCard label="Work Stock"       value={workStockTotal}  sign="+"  loading={loading} />
               <NWMiniCard label="Brokerage"        value={brokerageTotal}  sign="+"  loading={loading} />
-              <NWMiniCard label="Liquid Assets"    value={liquidTotal}     sign="+"  loading={loading} />
-              <NWMiniCard label="Physical Assets"  value={assetValue}      sign="+"  loading={loading} />
-              <NWMiniCard label="Asset Debt"       value={assetDebt}       sign="−"  loading={loading} liability />
+              <NWMiniCard label="Liquid Assets"    value={liquidTotal}           sign="+"  loading={loading} />
+              <NWMiniCard label="Physical Assets"  value={assetValue}            sign="+"  loading={loading} />
+              {mortgagePropertyValue > 0 && (
+                <NWMiniCard label="Property Value" value={mortgagePropertyValue} sign="+"  loading={loading} />
+              )}
+              <NWMiniCard label="Asset Debt"       value={assetDebt}             sign="−"  loading={loading} liability />
               {hasMortgage && (
-                <NWMiniCard label="Mortgage"       value={mortgageBalance}   sign="−" loading={loading} liability />
+                <NWMiniCard label="Mortgage Bal."  value={mortgageBalance}       sign="−"  loading={loading} liability />
               )}
               {hasLoans && (
                 <NWMiniCard label="Loan Balance"   value={loanCurrentTotal}  sign="−" loading={false}   liability />
@@ -669,16 +725,12 @@ export default function DashboardPage() {
           to="/mortgage"
           icon={Home}
           iconClass="bg-yellow-500/10 text-yellow-400"
-          title="Mortgage"
+          title={mortgageProperties.length > 1 ? `Mortgages (${mortgageProperties.length})` : 'Mortgage'}
           primary={hasMortgage ? usd(mortgageBalance) : 'Not set up'}
           primaryLabel={hasMortgage ? 'remaining balance' : null}
           primaryClass={hasMortgage ? 'text-rose-400' : 'text-slate-400'}
           loading={false}
-          rows={hasMortgage ? [
-            ['Original loan',    usd(parseFloat(mortgageConfig?.principal)), 'text-slate-300'],
-            ['Standard payoff',  mortgageLabel,                              'text-slate-300'],
-            ['Liability impact', `−${usd(mortgageBalance)}`,                'text-red-400/80'],
-          ] : []}
+          rows={mortgageCardRows}
         />
 
       </div>

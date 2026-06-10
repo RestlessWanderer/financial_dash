@@ -214,8 +214,10 @@ export default function FirePage() {
   // Read all localStorage data
   const profile        = load('user_profile', {})
   const loans          = load('loans_data', [])
-  const mortgageConfig = load('mortgage_config', null)
-  const mortgageExtras = load('mortgage_extras', null)
+  // Multi-property mortgage support — sum all property balances
+  const mortgageProperties = load('mortgages_v2', null)
+  const mortgageConfig     = load('mortgage_config', null)  // legacy fallback
+  const mortgageExtras     = load('mortgage_extras', null)  // legacy fallback
   const budgetDefaults = load('budget_defaults', {})
   const customLabels   = load('budget_custom_labels', [])
   const neFlags        = new Set(load('budget_ne_flags', []))
@@ -286,9 +288,23 @@ export default function FirePage() {
   const totalLoanInterest = loans.reduce((s, l) => s + calcRemainingInterest(l), 0)
   const loansCleared = loans.length === 0 || totalLoanBalance === 0
 
-  // Mortgage
-  const mortgageBalance = calcMortgageBalance(mortgageConfig, mortgageExtras)
-  const mortgageCleared = mortgageBalance != null ? mortgageBalance <= 0 : mortgageConfig == null
+  // Mortgage — sum all properties if using multi-property format
+  const mortgageBalance = useMemo(() => {
+    if (mortgageProperties && mortgageProperties.length > 0) {
+      let total = 0, anySet = false
+      for (const p of mortgageProperties) {
+        const extras = (() => {
+          try { return JSON.parse(localStorage.getItem(`mortgage_extras_${p.id}`) ?? 'null') ?? {} }
+          catch { return {} }
+        })()
+        const bal = calcMortgageBalance(p.form, extras)
+        if (bal !== null) { total += bal; anySet = true }
+      }
+      return anySet ? total : null
+    }
+    return calcMortgageBalance(mortgageConfig, mortgageExtras)
+  }, [mortgageProperties, mortgageConfig, mortgageExtras])
+  const mortgageCleared = mortgageBalance != null ? mortgageBalance <= 0 : (mortgageProperties ? mortgageProperties.length === 0 : mortgageConfig == null)
 
   // Bridge capital required
   // = annual essential expenses × bridge years / withdrawal rate
@@ -463,23 +479,44 @@ export default function FirePage() {
       doneMessage: 'Mortgage fully paid off — you own your home outright!',
       linkTo: '/mortgage',
       linkLabel: 'Mortgage',
-      body: mortgageConfig == null ? (
+      body: (!mortgageProperties || mortgageProperties.length === 0) && mortgageConfig == null ? (
         <p className="text-xs text-muted">No mortgage configured. Set it up in the Mortgage page if applicable.</p>
       ) : (
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted">Remaining balance</span>
-            <span className="mono text-rose-400 font-semibold">{usd(mortgageBalance)}</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-            <div
-              className="h-full rounded-full bg-rose-400/60 transition-all duration-700"
-              style={{ width: `${Math.min(100, (mortgageBalance / (parseFloat(mortgageConfig?.principal) || 1)) * 100)}%` }}
-            />
-          </div>
+          {/* Multi-property: list each */}
+          {(mortgageProperties && mortgageProperties.length > 1) ? (
+            mortgageProperties.map(p => {
+              const extras = (() => { try { return JSON.parse(localStorage.getItem(`mortgage_extras_${p.id}`) ?? 'null') ?? {} } catch { return {} } })()
+              const bal = calcMortgageBalance(p.form, extras)
+              const origPrincipal = parseFloat(p.form?.principal) || 1
+              return bal != null ? (
+                <div key={p.id} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted truncate max-w-[60%]">{p.address}</span>
+                    <span className="mono text-rose-400 font-semibold">{usd(bal)}</span>
+                  </div>
+                  <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                    <div className="h-full rounded-full bg-rose-400/60 transition-all duration-700"
+                      style={{ width: `${Math.min(100, (bal / origPrincipal) * 100)}%` }} />
+                  </div>
+                </div>
+              ) : null
+            })
+          ) : (
+            <>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted">Remaining balance</span>
+                <span className="mono text-rose-400 font-semibold">{usd(mortgageBalance)}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="h-full rounded-full bg-rose-400/60 transition-all duration-700"
+                  style={{ width: `${Math.min(100, (mortgageBalance / (parseFloat((mortgageProperties?.[0]?.form ?? mortgageConfig)?.principal) || 1)) * 100)}%` }}
+                />
+              </div>
+            </>
+          )}
           <p className="text-[10px] text-muted">
-            Paying off the mortgage could reduce essential monthly expenses by{' '}
-            <strong className="text-slate-300">~{usd(parseFloat(mortgageConfig?.payment || 0))}/mo</strong>,
+            Paying off {mortgageProperties && mortgageProperties.length > 1 ? 'all mortgages' : 'the mortgage'} reduces essential monthly expenses,
             lowering your required bridge capital.
           </p>
         </div>

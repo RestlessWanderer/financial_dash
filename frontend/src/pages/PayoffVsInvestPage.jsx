@@ -322,15 +322,24 @@ export default function PayoffVsInvestPage() {
       const p   = localStorage.getItem('payoff_vs_invest_profile')
       const mb  = localStorage.getItem('payoff_vs_invest_month_budgets')
       const cs  = localStorage.getItem('payoff_vs_invest_split')
-      const cfg = localStorage.getItem('mortgage_config')
-      const ext = localStorage.getItem('mortgage_extras')
+      // Prefer multi-property format; use first (primary) property for payoff strategy
+      const propsRaw = localStorage.getItem('mortgages_v2')
+      const cfg = propsRaw
+        ? JSON.stringify((JSON.parse(propsRaw)?.[0]?.form) ?? null)
+        : localStorage.getItem('mortgage_config')
+      const extKey = propsRaw
+        ? `mortgage_extras_${JSON.parse(propsRaw)?.[0]?.id ?? 1}`
+        : null
+      const ext = extKey
+        ? localStorage.getItem(extKey)
+        : localStorage.getItem('mortgage_extras')
       const bd  = localStorage.getItem('budget_data')
       const bdf = localStorage.getItem('budget_defaults')
       const bl  = localStorage.getItem('budget_custom_labels')
       if (p)   setProfile(JSON.parse(p))
       if (mb)  setMonthBudgets(JSON.parse(mb))
       if (cs)  setCustomSplit(parseFloat(cs))
-      if (cfg) setMortgageConfig(JSON.parse(cfg))
+      if (cfg && cfg !== 'null') setMortgageConfig(JSON.parse(cfg))
       if (ext) setMortgageExtras(JSON.parse(ext))
       if (bd)  setBudgetData(JSON.parse(bd))
       if (bdf) setBudgetDefaults(JSON.parse(bdf))

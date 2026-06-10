@@ -119,9 +119,10 @@ function calcMortgageBalance(config, extras) {
 export function useMilestoneNotifications(addToast) {
   const check = useCallback(() => {
     const seen           = loadSeen()
-    const loans          = load('loans_data', [])
-    const mortgageConfig = load('mortgage_config', null)
-    const mortgageExtras = load('mortgage_extras', null)
+    const loans              = load('loans_data', [])
+    const mortgageProperties = load('mortgages_v2', null)
+    const mortgageConfig     = load('mortgage_config', null)  // legacy fallback
+    const mortgageExtras     = load('mortgage_extras', null)  // legacy fallback
     const profile        = load('user_profile', {})
     const budgetDefaults = load('budget_defaults', {})
     const customLabels   = load('budget_custom_labels', [])
@@ -156,25 +157,40 @@ export function useMilestoneNotifications(addToast) {
     }
 
     // ── Mortgage milestones ────────────────────────────────────────
-    if (mortgageConfig) {
-      const balance   = calcMortgageBalance(mortgageConfig, mortgageExtras)
-      const principal = parseFloat(mortgageConfig.principal) || 0
+    // Check each property individually so milestones fire per-property
+    const mortgageList = mortgageProperties && mortgageProperties.length > 0
+      ? mortgageProperties.map(p => ({
+          cfg:     p.form,
+          extras:  (() => { try { return JSON.parse(localStorage.getItem(`mortgage_extras_${p.id}`) ?? 'null') ?? {} } catch { return {} } })(),
+          label:   mortgageProperties.length > 1 ? p.address : null,
+          idSuffix: mortgageProperties.length > 1 ? `_${p.id}` : '',
+        }))
+      : mortgageConfig
+      ? [{ cfg: mortgageConfig, extras: mortgageExtras ?? {}, label: null, idSuffix: '' }]
+      : []
+
+    if (mortgageList.length > 0) {
+      for (const { cfg, extras, label, idSuffix } of mortgageList) {
+      const balance   = calcMortgageBalance(cfg, extras)
+      const principal = parseFloat(cfg?.principal) || 0
       if (balance != null && principal > 0) {
         const pctPaid = ((principal - balance) / principal) * 100
+        const addrSuffix = label ? ` (${label})` : ''
         ;[25, 50, 75, 100].forEach(pct => {
           if (pctPaid >= pct) {
             milestones.push({
-              id: `mortgage_${pct}pct`,
+              id: `mortgage_${pct}pct${idSuffix}`,
               emoji: pct === 100 ? '🏠' : '📈',
-              title: pct === 100 ? 'Mortgage Paid Off!' : `Mortgage ${pct}% paid`,
+              title: pct === 100 ? `Mortgage Paid Off!${addrSuffix}` : `Mortgage ${pct}% paid${addrSuffix}`,
               body: pct === 100
-                ? 'You own your home outright. A major FIRE milestone!'
-                : `You've paid off ${pct}% of your mortgage. ${100 - pct}% to go!`,
+                ? `You own your home outright${label ? ' at ' + label : ''}. A major FIRE milestone!`
+                : `You've paid off ${pct}% of your mortgage${addrSuffix}. ${100 - pct}% to go!`,
             })
           }
         })
       }
-    }
+      } // end for mortgageList
+    } // end if mortgageList.length > 0
 
     // ── Net worth milestones ───────────────────────────────────────
     if (nwHistory.length > 0) {
