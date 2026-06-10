@@ -169,28 +169,26 @@ export function useMilestoneNotifications(addToast) {
       ? [{ cfg: mortgageConfig, extras: mortgageExtras ?? {}, label: null, idSuffix: '' }]
       : []
 
-    if (mortgageList.length > 0) {
-      for (const { cfg, extras, label, idSuffix } of mortgageList) {
+    for (const { cfg, extras, label, idSuffix } of mortgageList) {
       const balance   = calcMortgageBalance(cfg, extras)
       const principal = parseFloat(cfg?.principal) || 0
       if (balance != null && principal > 0) {
-        const pctPaid = ((principal - balance) / principal) * 100
+        const pctPaid    = ((principal - balance) / principal) * 100
         const addrSuffix = label ? ` (${label})` : ''
         ;[25, 50, 75, 100].forEach(pct => {
           if (pctPaid >= pct) {
             milestones.push({
-              id: `mortgage_${pct}pct${idSuffix}`,
+              id:    `mortgage_${pct}pct${idSuffix}`,
               emoji: pct === 100 ? '🏠' : '📈',
               title: pct === 100 ? `Mortgage Paid Off!${addrSuffix}` : `Mortgage ${pct}% paid${addrSuffix}`,
-              body: pct === 100
+              body:  pct === 100
                 ? `You own your home outright${label ? ' at ' + label : ''}. A major FIRE milestone!`
                 : `You've paid off ${pct}% of your mortgage${addrSuffix}. ${100 - pct}% to go!`,
             })
           }
         })
       }
-      } // end for mortgageList
-    } // end if mortgageList.length > 0
+    }
 
     // ── Net worth milestones ───────────────────────────────────────
     if (nwHistory.length > 0) {
