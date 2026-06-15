@@ -221,7 +221,7 @@ export default function Layout() {
 
       {/* ── Main content ────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
-        <div className="p-6 max-w-6xl mx-auto">
+        <div className="p-6 max-w-[1600px] mx-auto">
           <Outlet />
         </div>
       </main>
