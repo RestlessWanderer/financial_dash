@@ -250,7 +250,7 @@ export default function BudgetPage() {
   }
 
   const addCustomField = () => {
-    if (customLabels.length >= 10) return
+    if (customLabels.length >= 25) return
     setCustomLabels(prev => {
       const next = [...prev, `Expense ${prev.length + 1}`]
       localStorage.setItem(LS_CUSTOM, JSON.stringify(next))
@@ -373,7 +373,7 @@ export default function BudgetPage() {
               </span>
             )}
           </div>
-          {customLabels.length < 10 && (
+          {customLabels.length < 25 && (
             <button onClick={addCustomField} className="flex items-center gap-1 text-[11px] text-accent hover:text-accent/80 transition-colors">
               <Plus size={11} /> Add category
             </button>
