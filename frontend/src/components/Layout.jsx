@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
-import { BarChart2, Bell, Landmark, Home, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon, Wallet, TrendingUp, Calculator, Milestone, CreditCard, UserCircle2, Pencil, Check, X, Flame } from 'lucide-react'
+import { BarChart2, Bell, Landmark, Home, PiggyBank, Briefcase, Layers, LayoutDashboard, Scale, Sun, Moon, Wallet, TrendingUp, Calculator, Milestone, CreditCard, UserCircle2, Pencil, Check, X, Flame, ShieldCheck } from 'lucide-react'
 import { useAlertNotifications } from '../hooks/useAlertNotifications'
 import { useMilestoneNotifications } from '../hooks/useMilestoneNotifications'
 import ToastContainer from './ToastContainer'
@@ -124,6 +124,7 @@ export default function Layout() {
           {nav('/strategy',  Scale,      'Payoff vs. Invest')}
           {nav('/dividends', Landmark,   'Dividends')}
           {nav('/fire',      Flame,      'FIRE Journey')}
+          {nav('/emergency-fund', ShieldCheck, 'Emergency Fund')}
         </nav>
 
         {/* ── Profile ───────────────────────────────────────────── */}
